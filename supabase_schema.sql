@@ -112,48 +112,61 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 -- ====================================================================
 
 -- Profiles Policies
+DROP POLICY IF EXISTS "Allow public read access to profiles" ON public.profiles;
 CREATE POLICY "Allow public read access to profiles" ON public.profiles
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow users to update their own profile" ON public.profiles;
 CREATE POLICY "Allow users to update their own profile" ON public.profiles
     FOR UPDATE USING (auth.uid() = id);
 
 -- Tutors Policies
+DROP POLICY IF EXISTS "Allow public read access to tutors" ON public.tutors;
 CREATE POLICY "Allow public read access to tutors" ON public.tutors
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow tutors to upsert their own row" ON public.tutors;
 CREATE POLICY "Allow tutors to upsert their own row" ON public.tutors
     FOR ALL USING (auth.uid() = id);
 
 -- Attendance Policies
+DROP POLICY IF EXISTS "Allow tutors to manage their attendance" ON public.attendance;
 CREATE POLICY "Allow tutors to manage their attendance" ON public.attendance
     FOR ALL USING (auth.uid() = tutor_id);
 
+DROP POLICY IF EXISTS "Allow users to view attendance list" ON public.attendance;
 CREATE POLICY "Allow users to view attendance list" ON public.attendance
     FOR SELECT USING (true);
 
 -- Progress Reports Policies
+DROP POLICY IF EXISTS "Allow read access to progress reports" ON public.progress_reports;
 CREATE POLICY "Allow read access to progress reports" ON public.progress_reports
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow tutors to insert progress reports" ON public.progress_reports;
 CREATE POLICY "Allow tutors to insert progress reports" ON public.progress_reports
     FOR INSERT WITH CHECK (auth.uid() = tutor_id);
 
 -- Reviews Policies
+DROP POLICY IF EXISTS "Allow read access to reviews" ON public.reviews;
 CREATE POLICY "Allow read access to reviews" ON public.reviews
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow parents to insert reviews" ON public.reviews;
 CREATE POLICY "Allow parents to insert reviews" ON public.reviews
     FOR INSERT WITH CHECK (auth.uid() = parent_id);
 
 -- Messages Policies
+DROP POLICY IF EXISTS "Allow read access to messages" ON public.messages;
 CREATE POLICY "Allow read access to messages" ON public.messages
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow authenticated users to send messages" ON public.messages;
 CREATE POLICY "Allow authenticated users to send messages" ON public.messages
     FOR INSERT WITH CHECK (auth.uid() = sender_id);
 
 -- Payments Policies
+DROP POLICY IF EXISTS "Allow users to view their related payments" ON public.payments;
 CREATE POLICY "Allow users to view their related payments" ON public.payments
     FOR SELECT USING (auth.uid() = tutor_id OR auth.uid() = parent_id);
 
@@ -183,6 +196,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger to run handle_new_user function on insert into auth.users
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
