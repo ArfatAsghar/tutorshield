@@ -7,7 +7,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield, Star, MapPin, Calendar, CheckCircle2, ArrowLeft, Loader2 } from "lucide-react";
+import { Shield, Star, MapPin, Calendar, CheckCircle2, ArrowLeft, Loader2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/tutors/$id")({
@@ -101,9 +101,14 @@ function TutorDetail() {
                 {tutor.subjects.map((s: string) => <Badge key={s} variant="secondary">{s}</Badge>)}
               </div>
             </div>
-            <div className="md:text-right">
+            <div className="md:text-right flex flex-col items-stretch md:items-end gap-2.5">
               <div className="text-3xl font-bold">${tutor.hourlyRate}<span className="text-base text-muted-foreground font-normal">/hr</span></div>
-              <Button size="lg" className="mt-3 w-full md:w-auto" onClick={() => toast.success("Session request sent!")}><Calendar className="w-4 h-4 mr-2" />Book session</Button>
+              <Button size="lg" className="w-full md:w-auto" onClick={() => toast.success("Session request sent!")}><Calendar className="w-4 h-4 mr-2" />Book session</Button>
+              <Link to="/messages" search={{ tutorId: tutor.id }} className="w-full md:w-auto">
+                <Button size="lg" variant="outline" className="w-full">
+                  <MessageSquare className="w-4 h-4 mr-2" /> Message tutor
+                </Button>
+              </Link>
             </div>
           </div>
         </CardContent>
