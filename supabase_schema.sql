@@ -79,11 +79,11 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 -- Enable RLS on reviews
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
--- 6. Create Messages Table (AI Moderated)
+-- 6. Create Messages Table (Recipient-Aware, WebSocket Sync Enabled)
 CREATE TABLE IF NOT EXISTS public.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    sender_role TEXT NOT NULL CHECK (sender_role IN ('parent', 'tutor')),
+    recipient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -105,6 +105,17 @@ CREATE TABLE IF NOT EXISTS public.payments (
 
 -- Enable RLS on payments
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+
+-- 8. Create Tutor Locations Table (Live Geotracking)
+CREATE TABLE IF NOT EXISTS public.tutor_locations (
+    tutor_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+    latitude NUMERIC NOT NULL,
+    longitude NUMERIC NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS on tutor_locations
+ALTER TABLE public.tutor_locations ENABLE ROW LEVEL SECURITY;
 
 
 -- ====================================================================
@@ -159,7 +170,7 @@ CREATE POLICY "Allow parents to insert reviews" ON public.reviews
 -- Messages Policies
 DROP POLICY IF EXISTS "Allow read access to messages" ON public.messages;
 CREATE POLICY "Allow read access to messages" ON public.messages
-    FOR SELECT USING (true);
+    FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
 
 DROP POLICY IF EXISTS "Allow authenticated users to send messages" ON public.messages;
 CREATE POLICY "Allow authenticated users to send messages" ON public.messages
@@ -169,6 +180,15 @@ CREATE POLICY "Allow authenticated users to send messages" ON public.messages
 DROP POLICY IF EXISTS "Allow users to view their related payments" ON public.payments;
 CREATE POLICY "Allow users to view their related payments" ON public.payments
     FOR SELECT USING (auth.uid() = tutor_id OR auth.uid() = parent_id);
+
+-- Tutor Locations Policies
+DROP POLICY IF EXISTS "Allow public read access to locations" ON public.tutor_locations;
+CREATE POLICY "Allow public read access to locations" ON public.tutor_locations
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow tutors to update their own location" ON public.tutor_locations;
+CREATE POLICY "Allow tutors to update their own location" ON public.tutor_locations
+    FOR ALL USING (auth.uid() = tutor_id);
 
 
 -- ====================================================================
@@ -201,3 +221,15 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+
+-- ====================================================================
+-- ENABLE REALTIME WEBSOCKET SUBSCRIPTIONS
+-- ====================================================================
+
+-- Enable full identity replica for messaging and locations tracking
+ALTER TABLE public.messages REPLICA IDENTITY FULL;
+ALTER TABLE public.tutor_locations REPLICA IDENTITY FULL;
+
+-- Add tables to the realtime publication
+DROP PUBLICATION IF EXISTS supabase_realtime CASCADE;
+CREATE PUBLICATION supabase_realtime FOR TABLE public.messages, public.tutor_locations;
