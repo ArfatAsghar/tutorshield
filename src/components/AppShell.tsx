@@ -4,7 +4,8 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const parentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -31,6 +32,44 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const nav = user?.role === "tutor" ? tutorNav : parentNav;
+
+  // Background geotracking for active tutors
+  useEffect(() => {
+    if (!user || user.role !== "tutor" || !isSupabaseConfigured) return;
+
+    let watchId: number | null = null;
+
+    const startTracking = () => {
+      if (!navigator.geolocation) return;
+
+      watchId = navigator.geolocation.watchPosition(
+        async (position) => {
+          try {
+            await supabase.from("tutor_locations").upsert({
+              tutor_id: user.id,
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              updated_at: new Date().toISOString(),
+            });
+          } catch (err) {
+            console.error("Failed to update tutor position in background:", err);
+          }
+        },
+        (error) => {
+          console.warn("Geotracking watchPosition warning:", error.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+      );
+    };
+
+    startTracking();
+
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [user]);
 
   return (
     <div className="min-h-screen flex bg-muted/30">

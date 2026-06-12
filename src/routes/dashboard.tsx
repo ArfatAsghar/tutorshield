@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, TrendingUp, Calendar, Users, CheckCircle2, AlertCircle, Star, Clock, Loader2 } from "lucide-react";
+import { Shield, TrendingUp, Calendar, Users, CheckCircle2, AlertCircle, Star, Clock, Loader2, MapPin, Navigation, Compass } from "lucide-react";
 import { tutors, progressReports } from "@/lib/mock-data";
 import { Reveal } from "@/components/Reveal";
 import { useState, useEffect } from "react";
@@ -32,6 +32,9 @@ function ParentDash() {
   });
   const [recentReports, setRecentReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Geotracking states for tutor
+  const [tutorLocation, setTutorLocation] = useState<{ lat: number; lng: number; updated: string } | null>(null);
 
   useEffect(() => {
     const loadParentData = async () => {
@@ -133,6 +136,65 @@ function ParentDash() {
     loadParentData();
   }, []);
 
+  // Subscribe to real-time location changes of the active tutor
+  useEffect(() => {
+    if (!isSupabaseConfigured || !tutor?.id) return;
+
+    const fetchInitialLocation = async () => {
+      const { data, error } = await supabase
+        .from("tutor_locations")
+        .select("*")
+        .eq("tutor_id", tutor.id)
+        .maybeSingle();
+
+      if (data && !error) {
+        setTutorLocation({
+          lat: Number(data.latitude),
+          lng: Number(data.longitude),
+          updated: data.updated_at
+        });
+      }
+    };
+    
+    fetchInitialLocation();
+
+    // Setup Supabase Realtime channel subscription
+    const channel = supabase
+      .channel(`tutor-tracking-${tutor.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tutor_locations",
+          filter: `tutor_id=eq.${tutor.id}`
+        },
+        (payload) => {
+          if (payload.new) {
+            setTutorLocation({
+              lat: Number(payload.new.latitude),
+              lng: Number(payload.new.longitude),
+              updated: payload.new.updated_at
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tutor?.id]);
+
+  // Estimate distance (simple distance computation or mock Lahore coordinate anchor 24.86, 67.00)
+  const homeCoords = { lat: 24.8607, lng: 67.0011 }; // Center coordinate anchor
+  const distance = tutorLocation
+    ? Math.sqrt(Math.pow(tutorLocation.lat - homeCoords.lat, 2) + Math.pow(tutorLocation.lng - homeCoords.lng, 2)) * 111
+    : 1.5; // fallback to 1.5 km
+
+  const formattedDistance = distance < 0.1 ? "Arrived" : `${distance.toFixed(2)} km away`;
+  const eta = distance < 0.1 ? "Now" : `${Math.ceil(distance * 6)} mins`;
+
   if (loading) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
@@ -164,6 +226,123 @@ function ParentDash() {
           </Reveal>
         ))}
       </div>
+
+      {/* Real-time Geotracking Widget */}
+      <Card className="border-accent/30 overflow-hidden shadow-emerald">
+        <div className="bg-gradient-hero text-primary-foreground p-6">
+          <div className="flex justify-between items-start flex-wrap gap-4">
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/20 border border-accent/30 text-xs font-semibold uppercase tracking-wider text-accent-foreground">
+                <Compass className="w-3.5 h-3.5 animate-spin-slow" />
+                Live Geotracking
+              </span>
+              <h2 className="text-2xl font-bold mt-2.5">Tutor Transit Status</h2>
+              <p className="text-sm text-primary-foreground/75 mt-0.5">Live updates sharing started 30 mins before the session</p>
+            </div>
+            {tutorLocation ? (
+              <div className="text-right">
+                <div className="text-3xl font-display font-medium text-gold">{eta}</div>
+                <div className="text-xs uppercase tracking-wider text-primary-foreground/60">Estimated ETA</div>
+              </div>
+            ) : (
+              <div className="text-right text-xs bg-muted/20 border border-white/10 px-3 py-1.5 rounded-lg text-primary-foreground/70">
+                Awaiting updates
+              </div>
+            )}
+          </div>
+        </div>
+        <CardContent className="pt-6">
+          <div className="grid md:grid-cols-3 gap-6 items-center">
+            {/* Visual Vector Tracker Map */}
+            <div className="md:col-span-2 relative h-48 rounded-xl bg-muted overflow-hidden border border-border flex items-center justify-center">
+              {/* Map grid lines */}
+              <div className="absolute inset-0 opacity-[0.08]" style={{ backgroundImage: "radial-gradient(circle, #000 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
+              
+              {/* Map Path Vector */}
+              <svg className="absolute w-[85%] h-[75%] opacity-50" viewBox="0 0 100 50">
+                <path d="M 10 40 Q 30 10, 50 30 T 90 10" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4" className="text-muted-foreground" />
+                {tutorLocation && (
+                  <path d="M 10 40 Q 30 10, 50 30 T 90 10" fill="none" stroke="oklch(var(--a))" strokeWidth="3" strokeDasharray="100" strokeDashoffset={75} className="animate-dash" />
+                )}
+              </svg>
+
+              {/* Pins */}
+              {/* Parent Home Pin */}
+              <div className="absolute right-[10%] top-[15%] flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white ring-4 ring-primary/20 shadow-lg">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-semibold mt-1 bg-card border border-border px-1.5 py-0.5 rounded shadow text-foreground">Home</span>
+              </div>
+
+              {/* Tutor Marker */}
+              <div 
+                className="absolute flex flex-col items-center transition-all duration-1000"
+                style={{ 
+                  left: tutorLocation ? "48%" : "12%", 
+                  top: tutorLocation ? "52%" : "70%" 
+                }}
+              >
+                <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-foreground ring-4 ring-accent/30 shadow-lg animate-bounce">
+                  <Navigation className="w-4 h-4 rotate-45" />
+                </div>
+                <span className="text-[10px] font-semibold mt-1 bg-card border border-border px-1.5 py-0.5 rounded shadow text-foreground capitalize">
+                  {tutor?.name?.split(" ")[0] || "Tutor"}
+                </span>
+              </div>
+
+              <div className="absolute bottom-2 left-2 text-[10px] bg-card/80 border border-border/50 text-muted-foreground px-2 py-1 rounded backdrop-blur">
+                {tutorLocation 
+                  ? `Lat: ${tutorLocation.lat.toFixed(4)}, Lng: ${tutorLocation.lng.toFixed(4)}`
+                  : "Using template GPS anchor"
+                }
+              </div>
+            </div>
+
+            {/* Travel stats pane */}
+            <div className="space-y-4">
+              <div className="border-b border-border pb-3">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Tutor Status</div>
+                <div className="text-lg font-semibold flex items-center gap-1.5 mt-0.5">
+                  <span className={`w-2 h-2 rounded-full ${tutorLocation ? "bg-accent animate-pulse" : "bg-muted"}`} />
+                  {tutorLocation ? "In Transit" : "Offline / Unscheduled"}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Distance</div>
+                  <div className="font-semibold">{formattedDistance}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Last Ping</div>
+                  <div className="font-semibold">
+                    {tutorLocation 
+                      ? new Date(tutorLocation.updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                      : "—"
+                    }
+                  </div>
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full text-xs"
+                onClick={() => {
+                  if (tutorLocation) {
+                    toast.info("Map updated with latest GPS coordinates.");
+                  } else {
+                    // Start simulated movement for testing
+                    setTutorLocation({ lat: 24.8550, lng: 66.9950, updated: new Date().toISOString() });
+                    toast.success("Simulation started! Location ping registered.");
+                  }
+                }}
+              >
+                {tutorLocation ? "Refresh Geotags" : "Simulate Tutor Movement"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {tutor && (
         <div className="grid lg:grid-cols-3 gap-6">
