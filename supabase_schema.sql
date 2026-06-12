@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
 -- 6. Create Messages Table (Recipient-Aware, WebSocket Sync Enabled)
-CREATE TABLE IF NOT EXISTS public.messages (
+DROP TABLE IF EXISTS public.messages CASCADE;
+CREATE TABLE public.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     recipient_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
