@@ -1,9 +1,14 @@
 -- ====================================================================
--- TutorShield Database Schema and Triggers Setup Script
--- Copy and run this script inside your Supabase SQL Editor
+-- TutorShield — Complete Database Schema (Final Version)
+-- Paste this entire script into Supabase SQL Editor and click Run
 -- ====================================================================
 
--- 1. Create Profiles Table (Public Profile Data)
+
+-- ====================================================================
+-- SECTION 1: TABLES
+-- ====================================================================
+
+-- 1. Profiles Table
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -14,10 +19,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- 2. Create Tutors Table (Tutor Specific Professional Metadata)
+-- 2. Tutors Table (Professional metadata)
 CREATE TABLE IF NOT EXISTS public.tutors (
     id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
     subjects TEXT[] DEFAULT '{}',
@@ -31,10 +35,9 @@ CREATE TABLE IF NOT EXISTS public.tutors (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on tutors
 ALTER TABLE public.tutors ENABLE ROW LEVEL SECURITY;
 
--- 3. Create Attendance Table (Geotagged Check-ins)
+-- 3. Attendance Table (Geotagged check-ins)
 CREATE TABLE IF NOT EXISTS public.attendance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tutor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -47,10 +50,9 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on attendance
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 
--- 4. Create Progress Reports Table
+-- 4. Progress Reports Table
 CREATE TABLE IF NOT EXISTS public.progress_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tutor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -62,10 +64,9 @@ CREATE TABLE IF NOT EXISTS public.progress_reports (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on progress_reports
 ALTER TABLE public.progress_reports ENABLE ROW LEVEL SECURITY;
 
--- 5. Create Reviews Table
+-- 5. Reviews Table
 CREATE TABLE IF NOT EXISTS public.reviews (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tutor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -76,10 +77,9 @@ CREATE TABLE IF NOT EXISTS public.reviews (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on reviews
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
--- 6. Create Messages Table (Recipient-Aware, WebSocket Sync Enabled)
+-- 6. Messages Table (Realtime WebSocket chat)
 DROP TABLE IF EXISTS public.messages CASCADE;
 CREATE TABLE public.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -89,10 +89,9 @@ CREATE TABLE public.messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on messages
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
--- 7. Create Payments Table (Escrow and Earnings Log)
+-- 7. Payments Table (Escrow and earnings)
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tutor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -104,10 +103,9 @@ CREATE TABLE IF NOT EXISTS public.payments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on payments
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
--- 8. Create Tutor Locations Table (Live Geotracking)
+-- 8. Tutor Locations Table (Live GPS tracking)
 CREATE TABLE IF NOT EXISTS public.tutor_locations (
     tutor_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
     latitude NUMERIC NOT NULL,
@@ -115,42 +113,56 @@ CREATE TABLE IF NOT EXISTS public.tutor_locations (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS on tutor_locations
 ALTER TABLE public.tutor_locations ENABLE ROW LEVEL SECURITY;
 
 
 -- ====================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- SECTION 2: ROW LEVEL SECURITY POLICIES
 -- ====================================================================
 
--- Profiles Policies
+-- ── Profiles ──────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow public read access to profiles" ON public.profiles;
 CREATE POLICY "Allow public read access to profiles" ON public.profiles
     FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Allow users to update their own profile" ON public.profiles;
 CREATE POLICY "Allow users to update their own profile" ON public.profiles
-    FOR UPDATE USING (auth.uid() = id);
+    FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
--- Tutors Policies
+DROP POLICY IF EXISTS "Allow users to insert their own profile" ON public.profiles;
+CREATE POLICY "Allow users to insert their own profile" ON public.profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- ── Tutors ────────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow public read access to tutors" ON public.tutors;
 CREATE POLICY "Allow public read access to tutors" ON public.tutors
     FOR SELECT USING (true);
 
+-- FIX: Split into explicit INSERT + UPDATE policies (FOR ALL USING blocks INSERT)
 DROP POLICY IF EXISTS "Allow tutors to upsert their own row" ON public.tutors;
-CREATE POLICY "Allow tutors to upsert their own row" ON public.tutors
-    FOR ALL USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Allow tutors to insert own row" ON public.tutors;
+DROP POLICY IF EXISTS "Allow tutors to update own row" ON public.tutors;
+DROP POLICY IF EXISTS "Allow tutors to delete own row" ON public.tutors;
 
--- Attendance Policies
+CREATE POLICY "Allow tutors to insert own row" ON public.tutors
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Allow tutors to update own row" ON public.tutors
+    FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Allow tutors to delete own row" ON public.tutors
+    FOR DELETE USING (auth.uid() = id);
+
+-- ── Attendance ────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow tutors to manage their attendance" ON public.attendance;
 CREATE POLICY "Allow tutors to manage their attendance" ON public.attendance
-    FOR ALL USING (auth.uid() = tutor_id);
+    FOR ALL USING (auth.uid() = tutor_id) WITH CHECK (auth.uid() = tutor_id);
 
 DROP POLICY IF EXISTS "Allow users to view attendance list" ON public.attendance;
 CREATE POLICY "Allow users to view attendance list" ON public.attendance
     FOR SELECT USING (true);
 
--- Progress Reports Policies
+-- ── Progress Reports ──────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow read access to progress reports" ON public.progress_reports;
 CREATE POLICY "Allow read access to progress reports" ON public.progress_reports
     FOR SELECT USING (true);
@@ -159,7 +171,7 @@ DROP POLICY IF EXISTS "Allow tutors to insert progress reports" ON public.progre
 CREATE POLICY "Allow tutors to insert progress reports" ON public.progress_reports
     FOR INSERT WITH CHECK (auth.uid() = tutor_id);
 
--- Reviews Policies
+-- ── Reviews ───────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow read access to reviews" ON public.reviews;
 CREATE POLICY "Allow read access to reviews" ON public.reviews
     FOR SELECT USING (true);
@@ -168,7 +180,7 @@ DROP POLICY IF EXISTS "Allow parents to insert reviews" ON public.reviews;
 CREATE POLICY "Allow parents to insert reviews" ON public.reviews
     FOR INSERT WITH CHECK (auth.uid() = parent_id);
 
--- Messages Policies
+-- ── Messages ──────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow read access to messages" ON public.messages;
 CREATE POLICY "Allow read access to messages" ON public.messages
     FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
@@ -177,47 +189,54 @@ DROP POLICY IF EXISTS "Allow authenticated users to send messages" ON public.mes
 CREATE POLICY "Allow authenticated users to send messages" ON public.messages
     FOR INSERT WITH CHECK (auth.uid() = sender_id);
 
--- Payments Policies
+-- ── Payments ──────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow users to view their related payments" ON public.payments;
 CREATE POLICY "Allow users to view their related payments" ON public.payments
     FOR SELECT USING (auth.uid() = tutor_id OR auth.uid() = parent_id);
 
--- Tutor Locations Policies
+DROP POLICY IF EXISTS "Allow users to insert payments" ON public.payments;
+CREATE POLICY "Allow users to insert payments" ON public.payments
+    FOR INSERT WITH CHECK (auth.uid() = parent_id);
+
+-- ── Tutor Locations ───────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow public read access to locations" ON public.tutor_locations;
 CREATE POLICY "Allow public read access to locations" ON public.tutor_locations
     FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Allow tutors to update their own location" ON public.tutor_locations;
+CREATE POLICY "Allow tutors to insert their own location" ON public.tutor_locations
+    FOR INSERT WITH CHECK (auth.uid() = tutor_id);
+
 CREATE POLICY "Allow tutors to update their own location" ON public.tutor_locations
-    FOR ALL USING (auth.uid() = tutor_id);
+    FOR UPDATE USING (auth.uid() = tutor_id) WITH CHECK (auth.uid() = tutor_id);
 
 
 -- ====================================================================
--- AUTOMATION TRIGGER (Copy signup metadata to profiles)
+-- SECTION 3: TRIGGER — Auto-create profile + tutors row on signup
+--   Uses ON CONFLICT and EXCEPTION block to never block user signup
 -- ====================================================================
 
--- Function to handle user profile creation upon signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     user_role TEXT;
+    user_name TEXT;
 BEGIN
     user_role := COALESCE(new.raw_user_meta_data->>'role', 'parent');
+    user_name := COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1));
 
+    -- Create profile row (skip if already exists)
     INSERT INTO public.profiles (id, name, role, avatar, verified)
     VALUES (
         new.id,
-        COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
+        user_name,
         user_role,
-        CASE 
-            WHEN user_role = 'tutor' 
-            THEN 'https://api.dicebear.com/9.x/notionists/svg?seed=' || COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1))
-            ELSE 'https://api.dicebear.com/9.x/notionists/svg?seed=' || COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1))
-        END,
+        'https://api.dicebear.com/9.x/notionists/svg?seed=' || user_name,
         FALSE
-    );
+    )
+    ON CONFLICT (id) DO NOTHING;
 
-    -- If the new user is a tutor, auto-create their professional profile row
+    -- If registering as a tutor, auto-create their tutors row
     IF user_role = 'tutor' THEN
         INSERT INTO public.tutors (id, subjects, hourly_rate, city, experience, bio, badges, rating, reviews)
         VALUES (
@@ -230,14 +249,20 @@ BEGIN
             '{}',
             5.0,
             0
-        );
+        )
+        ON CONFLICT (id) DO NOTHING;
     END IF;
 
+    RETURN NEW;
+
+EXCEPTION WHEN OTHERS THEN
+    -- Never block signup — log the error and continue
+    RAISE WARNING 'handle_new_user failed for user %: % (SQLSTATE: %)', new.id, SQLERRM, SQLSTATE;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to run handle_new_user function on insert into auth.users
+-- Attach trigger to auth.users table
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
@@ -245,25 +270,26 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ====================================================================
--- ENABLE REALTIME WEBSOCKET SUBSCRIPTIONS
+-- SECTION 4: REALTIME WEBSOCKET SUBSCRIPTIONS
 -- ====================================================================
 
--- Enable full identity replica for messaging and locations tracking
 ALTER TABLE public.messages REPLICA IDENTITY FULL;
 ALTER TABLE public.tutor_locations REPLICA IDENTITY FULL;
 
--- Add tables to the realtime publication
 DROP PUBLICATION IF EXISTS supabase_realtime CASCADE;
-CREATE PUBLICATION supabase_realtime FOR TABLE public.messages, public.tutor_locations;
+CREATE PUBLICATION supabase_realtime FOR TABLE
+    public.messages,
+    public.tutor_locations;
 
 
 -- ====================================================================
--- BACKFILL: Insert tutors row for any existing tutor profiles
--- (Run this if tutors registered before the trigger was updated)
+-- SECTION 5: BACKFILL
+-- Adds a tutors row for any existing tutor profiles missing one
+-- Safe to run multiple times — uses NOT EXISTS guard
 -- ====================================================================
 
 INSERT INTO public.tutors (id, subjects, hourly_rate, city, experience, bio, badges, rating, reviews)
-SELECT 
+SELECT
     p.id,
     '{}',
     25.0,
