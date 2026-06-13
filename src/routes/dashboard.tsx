@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Shield, TrendingUp, Calendar, Users, CheckCircle2, AlertCircle, Star, Clock, Loader2, MapPin, Navigation, Compass } from "lucide-react";
@@ -9,6 +9,7 @@ import { tutors, progressReports } from "@/lib/mock-data";
 import { Reveal } from "@/components/Reveal";
 import { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — TutorShield" }] }),

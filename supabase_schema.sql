@@ -199,19 +199,40 @@ CREATE POLICY "Allow tutors to update their own location" ON public.tutor_locati
 -- Function to handle user profile creation upon signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+    user_role TEXT;
 BEGIN
+    user_role := COALESCE(new.raw_user_meta_data->>'role', 'parent');
+
     INSERT INTO public.profiles (id, name, role, avatar, verified)
     VALUES (
         new.id,
         COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-        COALESCE(new.raw_user_meta_data->>'role', 'parent'),
+        user_role,
         CASE 
-            WHEN COALESCE(new.raw_user_meta_data->>'role', 'parent') = 'tutor' 
-            THEN 'https://api.dicebear.com/9.x/notionists/svg?seed=Anya'
-            ELSE 'https://api.dicebear.com/9.x/notionists/svg?seed=Jack'
+            WHEN user_role = 'tutor' 
+            THEN 'https://api.dicebear.com/9.x/notionists/svg?seed=' || COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1))
+            ELSE 'https://api.dicebear.com/9.x/notionists/svg?seed=' || COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1))
         END,
         FALSE
     );
+
+    -- If the new user is a tutor, auto-create their professional profile row
+    IF user_role = 'tutor' THEN
+        INSERT INTO public.tutors (id, subjects, hourly_rate, city, experience, bio, badges, rating, reviews)
+        VALUES (
+            new.id,
+            '{}',
+            25.0,
+            'Lahore',
+            1,
+            '',
+            '{}',
+            5.0,
+            0
+        );
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -234,3 +255,26 @@ ALTER TABLE public.tutor_locations REPLICA IDENTITY FULL;
 -- Add tables to the realtime publication
 DROP PUBLICATION IF EXISTS supabase_realtime CASCADE;
 CREATE PUBLICATION supabase_realtime FOR TABLE public.messages, public.tutor_locations;
+
+
+-- ====================================================================
+-- BACKFILL: Insert tutors row for any existing tutor profiles
+-- (Run this if tutors registered before the trigger was updated)
+-- ====================================================================
+
+INSERT INTO public.tutors (id, subjects, hourly_rate, city, experience, bio, badges, rating, reviews)
+SELECT 
+    p.id,
+    '{}',
+    25.0,
+    'Lahore',
+    1,
+    '',
+    '{}',
+    5.0,
+    0
+FROM public.profiles p
+WHERE p.role = 'tutor'
+  AND NOT EXISTS (
+      SELECT 1 FROM public.tutors t WHERE t.id = p.id
+  );
