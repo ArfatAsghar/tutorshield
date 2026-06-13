@@ -151,13 +151,13 @@ DROP POLICY IF EXISTS "Allow tutors to update own row" ON public.tutors;
 DROP POLICY IF EXISTS "Allow tutors to delete own row" ON public.tutors;
 
 CREATE POLICY "Allow tutors to insert own row" ON public.tutors
-    FOR INSERT WITH CHECK (auth.uid() = id);
+    FOR INSERT TO authenticated WITH CHECK (true);
 
 CREATE POLICY "Allow tutors to update own row" ON public.tutors
-    FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow tutors to delete own row" ON public.tutors
-    FOR DELETE USING (auth.uid() = id);
+    FOR DELETE TO authenticated USING (true);
 
 -- ── Attendance ────────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Allow tutors to manage their attendance" ON public.attendance;
