@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Ensure column exists if table was already created earlier
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS username_last_changed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
+
+-- Notify PostgREST to reload schema cache
+NOTIFY pgrst, 'reload schema';
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 2. Tutors Table (Professional metadata)
