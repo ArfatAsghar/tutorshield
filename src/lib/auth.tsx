@@ -147,7 +147,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session) {
         await fetchAndSetUserProfile(data.user.id, data.user.email || "", data.user.user_metadata);
       } else {
-        setUser(u);
+        throw new Error(
+          "Verification email sent! Please check your inbox and confirm your email address to log in. " +
+          "(If you are testing locally, you can disable 'Confirm email' in your Supabase Auth Providers settings to log in automatically)."
+        );
       }
 
       return u;
