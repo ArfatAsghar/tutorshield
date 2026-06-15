@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { tutors, reviewsData as mockReviews } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,16 +27,46 @@ function Reviews() {
   const { user } = useAuth();
   const [rating, setRating] = useState(5);
   const [text, setText] = useState("");
-  const [tutorId, setTutorId] = useState(tutors[0]?.id || "");
+  const [tutorId, setTutorId] = useState("");
+  const [tutorsList, setTutorsList] = useState<{ id: string; name: string }[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const selectedTutor = tutors.find((t) => t.id === tutorId) || tutors[0];
+  const selectedTutor = tutorsList.find((t) => t.id === tutorId);
   const isParent = user?.role === "parent";
 
   useEffect(() => {
-    loadReviews();
+    const fetchTutors = async () => {
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase
+          .from("tutors")
+          .select("id, profiles (name)");
+        if (!error && data) {
+          const mapped = data.map((t: any) => {
+            const profile = Array.isArray(t.profiles) ? t.profiles[0] : t.profiles;
+            return {
+              id: t.id,
+              name: profile?.name || "Tutor"
+            };
+          });
+          setTutorsList(mapped);
+          if (mapped.length > 0) {
+            setTutorId(mapped[0].id);
+          }
+        }
+      }
+      setLoading(false);
+    };
+    fetchTutors();
+  }, []);
+
+  useEffect(() => {
+    if (tutorId) {
+      loadReviews();
+    } else {
+      setReviews([]);
+    }
   }, [tutorId]);
 
   const loadReviews = async () => {
@@ -49,7 +78,7 @@ function Reviews() {
         .eq("tutor_id", tutorId)
         .order("created_at", { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         setReviews(
           data.map((r: { id: string; parent_name: string; rating: number; text: string; created_at: string }) => ({
             id: r.id,
@@ -60,17 +89,17 @@ function Reviews() {
           }))
         );
       } else {
-        setReviews(mockReviews);
+        setReviews([]);
       }
     } else {
-      setReviews(mockReviews);
+      setReviews([]);
     }
     setLoading(false);
   };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || !user) return;
+    if (!text.trim() || !user || !tutorId) return;
 
     setSubmitting(true);
     try {
@@ -108,7 +137,7 @@ function Reviews() {
     }
   };
 
-  if (loading) {
+  if (loading && tutorsList.length === 0) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -123,7 +152,7 @@ function Reviews() {
         <p className="text-muted-foreground mt-1">Honest feedback from verified parents.</p>
       </div>
 
-      {isParent && (
+      {isParent && tutorsList.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Leave a review for {selectedTutor?.name}</CardTitle>
@@ -138,7 +167,7 @@ function Reviews() {
                   onChange={(e) => setTutorId(e.target.value)}
                   className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm"
                 >
-                  {tutors.map((t) => (
+                  {tutorsList.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
                     </option>
@@ -169,6 +198,14 @@ function Reviews() {
                 )}
               </Button>
             </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {isParent && tutorsList.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground text-sm">
+            No active tutors found to review.
           </CardContent>
         </Card>
       )}

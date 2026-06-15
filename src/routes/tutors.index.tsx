@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { RequireAuth } from "@/components/AppShell";
-import { tutors as mockTutors } from "@/lib/mock-data";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { TutorListItem } from "@/lib/tutor-types";
 import { Input } from "@/components/ui/input";
@@ -95,8 +94,7 @@ function TutorsList() {
           setTutorsList([]);
         }
       } else {
-        // Offline sandbox: show mock data
-        setTutorsList(mockTutors);
+        setTutorsList([]);
       }
 
       setLoading(false);

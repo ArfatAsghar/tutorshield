@@ -1,4 +1,17 @@
-import type { Tutor } from "@/lib/mock-data";
+export interface Tutor {
+  id: string;
+  name: string;
+  subjects: string[];
+  rating: number;
+  reviews: number;
+  hourlyRate: number;
+  verified: boolean;
+  city: string;
+  experience: number;
+  bio: string;
+  avatar: string;
+  badges: string[];
+}
 
 export type TutorListItem = Tutor;
 

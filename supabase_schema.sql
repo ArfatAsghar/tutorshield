@@ -298,10 +298,11 @@ CREATE PUBLICATION supabase_realtime FOR TABLE
 -- ====================================================================
 
 -- 1. Backfill profiles from auth.users if missing
-INSERT INTO public.profiles (id, name, role, avatar, verified)
+INSERT INTO public.profiles (id, name, email, role, avatar, verified)
 SELECT
     u.id,
     COALESCE(u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
+    u.email,
     COALESCE(u.raw_user_meta_data->>'role', 'parent'),
     'https://api.dicebear.com/9.x/notionists/svg?seed=' || COALESCE(u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
     FALSE

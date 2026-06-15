@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { RequireAuth } from "@/components/AppShell";
-import { tutors, reviewsData } from "@/lib/mock-data";
 import { mapTutorRow } from "@/lib/tutor-types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,7 @@ export const Route = createFileRoute("/tutors/$id")({
 function TutorDetail() {
   const { id } = useParams({ from: "/tutors/$id" });
   const [tutor, setTutor] = useState<any>(null);
-  const [reviews, setReviews] = useState<any[]>(reviewsData);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,8 +36,7 @@ function TutorDetail() {
         if (data && !error) {
           setTutor(mapTutorRow(data));
         } else {
-          // Fallback to mock
-          setTutor(tutors.find((t) => t.id === id) || null);
+          setTutor(null);
         }
 
         // Load reviews for this tutor
@@ -56,9 +54,12 @@ function TutorDetail() {
             date: new Date(r.created_at).toLocaleDateString(),
             text: r.text,
           })));
+        } else {
+          setReviews([]);
         }
       } else {
-        setTutor(tutors.find((t) => t.id === id) || null);
+        setTutor(null);
+        setReviews([]);
       }
       setLoading(false);
     };

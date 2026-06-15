@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Shield, TrendingUp, Calendar, Users, CheckCircle2, AlertCircle, Star, Clock, Loader2, MapPin, Navigation, Compass } from "lucide-react";
-import { tutors, progressReports } from "@/lib/mock-data";
 import { Reveal } from "@/components/Reveal";
 import { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -26,10 +25,10 @@ function ParentDash() {
   const { user } = useAuth();
   const [tutor, setTutor] = useState<any>(null);
   const [stats, setStats] = useState({
-    activeTutors: "1",
-    sessionsThisMonth: "12",
-    avgProgress: "4.3★",
-    nextSession: "Today 5pm",
+    activeTutors: "0",
+    sessionsThisMonth: "0",
+    avgProgress: "—",
+    nextSession: "—",
   });
   const [recentReports, setRecentReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,17 +53,18 @@ function ParentDash() {
           let selectedTutor = null;
           if (tutorsData && tutorsData.length > 0 && !tutorsErr) {
             const t = tutorsData[0];
+            const profile = Array.isArray(t.profiles) ? t.profiles[0] : t.profiles;
             selectedTutor = {
               id: t.id,
-              name: t.profiles?.name || "Tutor",
+              name: profile?.name || "Tutor",
               subjects: t.subjects || [],
               rating: t.rating || 5.0,
               reviews: t.reviews || 0,
-              avatar: t.profiles?.avatar || "https://api.dicebear.com/9.x/notionists/svg?seed=tutor",
-              verified: t.profiles?.verified ?? false,
+              avatar: profile?.avatar || "https://api.dicebear.com/9.x/notionists/svg?seed=tutor",
+              verified: profile?.verified ?? false,
             };
           } else {
-            selectedTutor = tutors[0];
+            selectedTutor = null;
           }
           setTutor(selectedTutor);
 
@@ -84,7 +84,7 @@ function ParentDash() {
               rating: r.rating,
             }));
           } else {
-            fetchedReports = progressReports;
+            fetchedReports = [];
           }
           setRecentReports(fetchedReports);
 
@@ -97,11 +97,11 @@ function ParentDash() {
             const d = new Date(r.created_at);
             return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
           }) || [];
-          const sessionsCount = reportsThisMonth.length || 12;
+          const sessionsCount = reportsThisMonth.length;
 
           const avg = reports && reports.length > 0
             ? (reports.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reports.length).toFixed(1) + "★"
-            : "4.3★";
+            : "—";
 
           const { data: activeAttendance } = await supabase
             .from("attendance")
@@ -109,7 +109,7 @@ function ParentDash() {
             .is("check_out_time", null)
             .limit(1);
 
-          const nextSessionTime = activeAttendance && activeAttendance.length > 0 ? "In Progress" : "Today 5pm";
+          const nextSessionTime = activeAttendance && activeAttendance.length > 0 ? "In Progress" : "—";
 
           setStats({
             activeTutors: String(activeTutorsCount),
@@ -122,13 +122,13 @@ function ParentDash() {
           console.error("Error loading parent dashboard data:", err);
         }
       } else {
-        setTutor(tutors[0]);
-        setRecentReports(progressReports);
+        setTutor(null);
+        setRecentReports([]);
         setStats({
-          activeTutors: "1",
-          sessionsThisMonth: "12",
-          avgProgress: "4.3★",
-          nextSession: "Today 5pm",
+          activeTutors: "0",
+          sessionsThisMonth: "0",
+          avgProgress: "—",
+          nextSession: "—",
         });
       }
       setLoading(false);
@@ -171,11 +171,12 @@ function ParentDash() {
           filter: `tutor_id=eq.${tutor.id}`
         },
         (payload) => {
-          if (payload.new) {
+          const loc = payload.new as { latitude?: number; longitude?: number; updated_at?: string } | undefined;
+          if (loc) {
             setTutorLocation({
-              lat: Number(payload.new.latitude),
-              lng: Number(payload.new.longitude),
-              updated: payload.new.updated_at
+              lat: Number(loc.latitude),
+              lng: Number(loc.longitude),
+              updated: loc.updated_at || new Date().toISOString()
             });
           }
         }
@@ -407,10 +408,10 @@ function ParentDash() {
 function TutorDash() {
   const { user } = useAuth();
   const [stats, setStats] = useState({
-    activeStudents: "8",
-    sessionsThisWeek: "14",
-    avgRating: "4.9★",
-    earningsMo: "$1,840",
+    activeStudents: "0",
+    sessionsThisWeek: "0",
+    avgRating: "—",
+    earningsMo: "$0",
   });
   const [todaySessions, setTodaySessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -428,7 +429,7 @@ function TutorDash() {
             .eq("tutor_id", user.id);
 
           const uniqueStudents = new Set(reports?.map((r: any) => r.student_name).filter(Boolean) || []);
-          const activeStudentsCount = uniqueStudents.size || 8;
+          const activeStudentsCount = uniqueStudents.size;
 
           // 2. Fetch reviews for average rating
           const { data: reviewsData, error: reviewsErr } = await supabase
@@ -438,7 +439,7 @@ function TutorDash() {
 
           const avgRatingVal = reviewsData && reviewsData.length > 0 && !reviewsErr
             ? (reviewsData.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewsData.length).toFixed(1) + "★"
-            : "4.9★";
+            : "—";
 
           // 3. Fetch attendance records in last 7 days for sessions this week
           const oneWeekAgo = new Date();
@@ -449,7 +450,7 @@ function TutorDash() {
             .eq("tutor_id", user.id)
             .gte("check_in_time", oneWeekAgo.toISOString());
 
-          const sessionsWeekCount = attendanceData && !attErr ? attendanceData.length : 14;
+          const sessionsWeekCount = attendanceData && !attErr ? attendanceData.length : 0;
 
           // 4. Fetch payments to sum monthly earnings
           const firstDayOfMonth = new Date();
@@ -464,7 +465,7 @@ function TutorDash() {
 
           const monthlyEarnings = paymentsData && !payErr
             ? paymentsData.reduce((sum: number, p: any) => sum + Number(p.amount), 0)
-            : 1840;
+            : 0;
 
           setStats({
             activeStudents: String(activeStudentsCount),
@@ -488,11 +489,7 @@ function TutorDash() {
               active: true
             })));
           } else {
-            setTodaySessions([
-              { time: "3:00 PM", student: "Zain", subject: "Mathematics" },
-              { time: "5:00 PM", student: "Maryam", subject: "Physics" },
-              { time: "7:00 PM", student: "Hassan", subject: "Chemistry" },
-            ]);
+            setTodaySessions([]);
           }
 
         } catch (err) {
@@ -500,16 +497,12 @@ function TutorDash() {
         }
       } else {
         setStats({
-          activeStudents: "8",
-          sessionsThisWeek: "14",
-          avgRating: "4.9★",
-          earningsMo: "$1,840",
+          activeStudents: "0",
+          sessionsThisWeek: "0",
+          avgRating: "—",
+          earningsMo: "$0",
         });
-        setTodaySessions([
-          { time: "3:00 PM", student: "Zain", subject: "Mathematics" },
-          { time: "5:00 PM", student: "Maryam", subject: "Physics" },
-          { time: "7:00 PM", student: "Hassan", subject: "Chemistry" },
-        ]);
+        setTodaySessions([]);
       }
       setLoading(false);
     };
@@ -566,16 +559,22 @@ function TutorDash() {
         <Card>
           <CardHeader><CardTitle>Today's sessions</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {todaySessions.map((s, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                <div className="text-sm font-semibold w-16">{s.time}</div>
-                <div className="flex-1">
-                  <p className="font-medium">{s.student}</p>
-                  <p className="text-xs text-muted-foreground">{s.subject}</p>
-                </div>
-                <Link to="/attendance"><Button size="sm" variant={s.active ? "default" : "outline"}>{s.active ? "Active" : "Check in"}</Button></Link>
+            {todaySessions.length === 0 ? (
+              <div className="text-center py-6 text-sm text-muted-foreground">
+                No active or scheduled sessions for today.
               </div>
-            ))}
+            ) : (
+              todaySessions.map((s, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                  <div className="text-sm font-semibold w-16">{s.time}</div>
+                  <div className="flex-1">
+                    <p className="font-medium">{s.student}</p>
+                    <p className="text-xs text-muted-foreground">{s.subject}</p>
+                  </div>
+                  <Link to="/attendance"><Button size="sm" variant={s.active ? "default" : "outline"}>{s.active ? "Active" : "Check in"}</Button></Link>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 

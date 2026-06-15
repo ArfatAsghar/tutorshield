@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { RequireAuth } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { payments as mockPayments } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,10 +58,10 @@ function Payments() {
           }))
         );
       } else {
-        setRows(mockPayments);
+        setRows([]);
       }
     } else {
-      setRows(mockPayments);
+      setRows([]);
     }
     setLoading(false);
   };

@@ -6,6 +6,8 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { MapPin, LogIn, LogOut, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +19,7 @@ export const Route = createFileRoute("/attendance")({
 function Attendance() {
   const { user } = useAuth();
   const [checkedIn, setCheckedIn] = useState(false);
+  const [studentName, setStudentName] = useState("");
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -63,26 +66,28 @@ function Attendance() {
           setCheckedIn(true);
           setCheckInTime(new Date(active.check_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
           setActiveRecordId(active.id);
+          setStudentName(active.student_name || "");
         }
       }
     } else {
-      setHistory([
-        { date: "Jun 5", student: "Zain", in: "5:00 PM", out: "6:30 PM", status: "Completed" },
-        { date: "Jun 3", student: "Maryam", in: "4:00 PM", out: "5:30 PM", status: "Completed" },
-        { date: "Jun 1", student: "Hassan", in: "7:00 PM", out: "8:00 PM", status: "Completed" },
-      ]);
+      setHistory([]);
     }
     setLoading(false);
   };
 
   const checkIn = async () => {
+    if (!studentName.trim()) {
+      toast.error("Please enter the student's name");
+      return;
+    }
+    const sName = studentName.trim();
     if (isSupabaseConfigured && user) {
       try {
         const { data, error } = await supabase
           .from("attendance")
           .insert({
             tutor_id: user.id,
-            student_name: "Student",
+            student_name: sName,
             check_in_lat: coords?.lat,
             check_in_lng: coords?.lng,
             status: "In Progress",
@@ -94,14 +99,14 @@ function Attendance() {
         setActiveRecordId(data.id);
         setCheckedIn(true);
         setCheckInTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-        toast.success(`Geo check-in recorded · ${coords?.lat.toFixed(2)}°N, ${coords?.lng.toFixed(2)}°E`);
+        toast.success(`Geo check-in recorded for ${sName} · ${coords?.lat.toFixed(2)}°N, ${coords?.lng.toFixed(2)}°E`);
       } catch (err: any) {
         toast.error(err.message || "Check-in failed");
       }
     } else {
       setCheckedIn(true);
       setCheckInTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-      toast.success(`Geo check-in recorded · ${coords?.lat?.toFixed(2)}°N, ${coords?.lng?.toFixed(2)}°E`);
+      toast.success(`Geo check-in recorded for ${sName} · ${coords?.lat?.toFixed(2)}°N, ${coords?.lng?.toFixed(2)}°E`);
     }
   };
 
@@ -116,6 +121,7 @@ function Attendance() {
         if (error) throw error;
         setCheckedIn(false);
         setActiveRecordId(null);
+        setStudentName("");
         toast.success("Session ended · payment released to escrow");
         loadHistory();
       } catch (err: any) {
@@ -123,6 +129,7 @@ function Attendance() {
       }
     } else {
       setCheckedIn(false);
+      setStudentName("");
       toast.success("Session ended · payment released to escrow");
     }
   };
@@ -153,7 +160,18 @@ function Attendance() {
         </div>
         <CardContent className="pt-6">
           {!checkedIn ? (
-            <Button size="lg" className="w-full" onClick={checkIn}><LogIn className="w-4 h-4 mr-2" />Geo check-in</Button>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="student-name" className="text-muted-foreground">Student Name</Label>
+                <Input
+                  id="student-name"
+                  placeholder="Enter student's name (e.g. Zain)"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                />
+              </div>
+              <Button size="lg" className="w-full" onClick={checkIn} disabled={!studentName.trim()}><LogIn className="w-4 h-4 mr-2" />Geo check-in</Button>
+            </div>
           ) : (
             <Button size="lg" variant="destructive" className="w-full" onClick={checkOut}><LogOut className="w-4 h-4 mr-2" />Check out & end session</Button>
           )}
