@@ -135,10 +135,32 @@ function SettingsPage() {
         }
 
         const nowIso = new Date().toISOString();
-        const { error } = await supabase
+        
+        const { data: profileCheck } = await supabase
           .from("profiles")
-          .update({ name, username_last_changed_at: nowIso })
-          .eq("id", user.id);
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        let error;
+        if (profileCheck) {
+          const res = await supabase
+            .from("profiles")
+            .update({ name, username_last_changed_at: nowIso })
+            .eq("id", user.id);
+          error = res.error;
+        } else {
+          const res = await supabase
+            .from("profiles")
+            .insert({
+              id: user.id,
+              name,
+              role: user.role || "tutor",
+              avatar: avatar || `https://api.dicebear.com/9.x/notionists/svg?seed=${name}`,
+              username_last_changed_at: nowIso
+            });
+          error = res.error;
+        }
 
         if (error) throw error;
 
@@ -163,6 +185,25 @@ function SettingsPage() {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
+
+        // Ensure profile row exists to satisfy foreign key constraint tutors_id_fkey
+        const { data: profileCheck } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!profileCheck) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .insert({
+              id: user.id,
+              name: name || user.name || user.email.split("@")[0],
+              role: user.role || "tutor",
+              avatar: avatar || `https://api.dicebear.com/9.x/notionists/svg?seed=${name || user.name}`
+            });
+          if (profileError) throw profileError;
+        }
 
         const { error } = await supabase.from("tutors").upsert({
           id: user.id,
@@ -218,10 +259,30 @@ function SettingsPage() {
         } = supabase.storage.from("tutor-avatars").getPublicUrl(filePath);
 
         // Update profile
-        const { error: updateError } = await supabase
+        const { data: profileCheck } = await supabase
           .from("profiles")
-          .update({ avatar: publicUrl })
-          .eq("id", user.id);
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        let updateError;
+        if (profileCheck) {
+          const res = await supabase
+            .from("profiles")
+            .update({ avatar: publicUrl })
+            .eq("id", user.id);
+          updateError = res.error;
+        } else {
+          const res = await supabase
+            .from("profiles")
+            .insert({
+              id: user.id,
+              name: name || user.name || user.email.split("@")[0],
+              role: user.role || "tutor",
+              avatar: publicUrl
+            });
+          updateError = res.error;
+        }
 
         if (updateError) throw updateError;
 

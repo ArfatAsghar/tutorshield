@@ -290,10 +290,24 @@ CREATE PUBLICATION supabase_realtime FOR TABLE
 
 -- ====================================================================
 -- SECTION 5: BACKFILL
--- Adds a tutors row for any existing tutor profiles missing one
--- Safe to run multiple times — uses NOT EXISTS guard
+-- Safe to run multiple times — uses NOT EXISTS guards
 -- ====================================================================
 
+-- 1. Backfill profiles from auth.users if missing
+INSERT INTO public.profiles (id, name, role, avatar, verified)
+SELECT
+    u.id,
+    COALESCE(u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
+    COALESCE(u.raw_user_meta_data->>'role', 'parent'),
+    'https://api.dicebear.com/9.x/notionists/svg?seed=' || COALESCE(u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
+    FALSE
+FROM auth.users u
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = u.id
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Backfill tutors from profiles if missing
 INSERT INTO public.tutors (id, subjects, hourly_rate, city, experience, bio, badges, rating, reviews)
 SELECT
     p.id,
