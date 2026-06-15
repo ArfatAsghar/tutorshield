@@ -29,7 +29,7 @@ function AuthPage() {
       if (mode === "login") {
         const loggedIn = await login(email, password);
         toast.success("Welcome back!");
-        navigate({ to: loggedIn.role === "tutor" && !loggedIn.verified ? "/verification" : "/dashboard" });
+        navigate({ to: loggedIn.needsVerification ? "/verification" : loggedIn.role === "tutor" && !loggedIn.verified ? "/verification" : "/dashboard" });
       } else {
         const created = await signup({ name, email, password, role });
         if (created.needsVerification) {

@@ -117,6 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       const u = buildUserFromProfile(data.user.id, data.user.email || "", data.user.user_metadata, profile);
+      // Include needsVerification flag when session is absent (email not yet confirmed)
+      u.needsVerification = !data.session;
       setUser(u);
       return u;
     }

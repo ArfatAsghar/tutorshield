@@ -162,5 +162,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     navigate({ to: "/auth" });
     return null;
   }
+  if (user.needsVerification) {
+    navigate({ to: "/verification" });
+    return null;
+  }
   return <AppShell>{children}</AppShell>;
 }
