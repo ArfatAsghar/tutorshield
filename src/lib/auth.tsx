@@ -10,6 +10,7 @@ export interface User {
   role: Role;
   verified?: boolean;
   avatar?: string;
+  needsVerification?: boolean;
 }
 
 interface AuthCtx {
@@ -142,15 +143,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw new Error(error.message);
       if (!data.user) throw new Error("No user returned");
 
-      const u: User = { id: data.user.id, email: data.user.email || "", name, role, verified: false };
+      const u: User = {
+        id: data.user.id,
+        email: data.user.email || "",
+        name,
+        role,
+        verified: false,
+        needsVerification: !data.session
+      };
 
       if (data.session) {
         await fetchAndSetUserProfile(data.user.id, data.user.email || "", data.user.user_metadata);
       } else {
-        throw new Error(
-          "Verification email sent! Please check your inbox and confirm your email address to log in. " +
-          "(If you are testing locally, you can disable 'Confirm email' in your Supabase Auth Providers settings to log in automatically)."
-        );
+        setUser(null);
       }
 
       return u;
