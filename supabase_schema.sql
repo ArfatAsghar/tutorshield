@@ -12,6 +12,7 @@
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    email TEXT,
     role TEXT NOT NULL CHECK (role IN ('parent', 'tutor')),
     avatar TEXT,
     verified BOOLEAN DEFAULT FALSE,
@@ -19,7 +20,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Ensure column exists if table was already created earlier
+-- Ensure columns exist and are configured correctly if table was already created earlier
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS username_last_changed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
 
 -- Notify PostgREST to reload schema cache
@@ -232,10 +235,11 @@ BEGIN
     user_name := COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1));
 
     -- Create profile row (skip if already exists)
-    INSERT INTO public.profiles (id, name, role, avatar, verified)
+    INSERT INTO public.profiles (id, name, email, role, avatar, verified)
     VALUES (
         new.id,
         user_name,
+        new.email,
         user_role,
         'https://api.dicebear.com/9.x/notionists/svg?seed=' || user_name,
         FALSE

@@ -155,6 +155,7 @@ function SettingsPage() {
             .insert({
               id: user.id,
               name,
+              email: user.email,
               role: user.role || "tutor",
               avatar: avatar || `https://api.dicebear.com/9.x/notionists/svg?seed=${name}`,
               username_last_changed_at: nowIso
@@ -199,6 +200,7 @@ function SettingsPage() {
             .insert({
               id: user.id,
               name: name || user.name || user.email.split("@")[0],
+              email: user.email,
               role: user.role || "tutor",
               avatar: avatar || `https://api.dicebear.com/9.x/notionists/svg?seed=${name || user.name}`
             });
@@ -278,6 +280,7 @@ function SettingsPage() {
             .insert({
               id: user.id,
               name: name || user.name || user.email.split("@")[0],
+              email: user.email,
               role: user.role || "tutor",
               avatar: publicUrl
             });
