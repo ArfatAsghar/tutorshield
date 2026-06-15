@@ -32,8 +32,16 @@ function AuthPage() {
         navigate({ to: loggedIn.role === "tutor" && !loggedIn.verified ? "/verification" : "/dashboard" });
       } else {
         const created = await signup({ name, email, password, role });
-        toast.success("Account created!");
-        navigate({ to: created.role === "tutor" ? "/verification" : "/dashboard" });
+        if (created.needsVerification) {
+          toast.success("Account created! Please check your inbox and confirm your email address to log in.", {
+            duration: 10000,
+          });
+          setMode("login");
+          setPassword("");
+        } else {
+          toast.success("Account created!");
+          navigate({ to: created.role === "tutor" ? "/verification" : "/dashboard" });
+        }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Something went wrong";
