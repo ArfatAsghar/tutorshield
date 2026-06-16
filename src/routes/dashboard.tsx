@@ -37,6 +37,7 @@ function ParentDash() {
   // Geotracking states for tutor
   const [tutorLocation, setTutorLocation] = useState<{ lat: number; lng: number; updated: string } | null>(null);
   const [homeCoords, setHomeCoords] = useState<{ lat: number; lng: number }>({ lat: 24.8607, lng: 67.0011 });
+  const [isSessionActive, setIsSessionActive] = useState(false);
 
   const loadParentData = async () => {
     setLoading(true);
@@ -121,14 +122,22 @@ function ParentDash() {
           ? (reports.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reports.length).toFixed(1) + "★"
           : "—";
 
-        const { data: activeAttendance } = await supabase
-          .from("attendance")
-          .select("*")
-          .is("check_out_time", null)
-          .limit(1);
+        let activeAttendance = [];
+        if (selectedTutor) {
+          const { data } = await supabase
+            .from("attendance")
+            .select("*")
+            .eq("tutor_id", selectedTutor.id)
+            .is("check_out_time", null)
+            .limit(1);
+          activeAttendance = data || [];
+        }
+
+        const hasActive = activeAttendance.length > 0;
+        setIsSessionActive(hasActive);
 
         const nextBooking = approvedBookings[0];
-        const nextSessionTime = activeAttendance && activeAttendance.length > 0
+        const nextSessionTime = hasActive
           ? "In Progress"
           : (nextBooking ? `${new Date(nextBooking.booking_date).toLocaleDateString([], { month: "short", day: "numeric" })} ${nextBooking.booking_time}` : "—");
 
@@ -146,6 +155,7 @@ function ParentDash() {
       setTutor(null);
       setRecentReports([]);
       setParentBookings([]);
+      setIsSessionActive(false);
       setStats({
         activeTutors: "0",
         sessionsThisMonth: "0",
@@ -160,17 +170,27 @@ function ParentDash() {
     loadParentData();
   }, [user]);
 
-  // Live real-time subscription for parent bookings
+  // Live real-time subscription for parent bookings and attendance
   useEffect(() => {
     if (!isSupabaseConfigured || !user) return;
-    const channel = supabase
+
+    const bookingsChannel = supabase
       .channel("parent-bookings-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings", filter: `parent_id=eq.${user.id}` }, () => {
         loadParentData();
       })
       .subscribe();
+
+    const attendanceChannel = supabase
+      .channel("parent-attendance-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, () => {
+        loadParentData();
+      })
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(bookingsChannel);
+      supabase.removeChannel(attendanceChannel);
     };
   }, [user]);
 
@@ -282,102 +302,104 @@ function ParentDash() {
       </div>
 
       {/* Real-time Geotracking Widget */}
-      <Card className="border-accent/30 overflow-hidden shadow-emerald">
-        <div className="bg-gradient-hero text-primary-foreground p-6">
-          <div className="flex justify-between items-start flex-wrap gap-4">
-            <div>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/20 border border-accent/30 text-xs font-semibold uppercase tracking-wider text-accent-foreground">
-                <Compass className="w-3.5 h-3.5 animate-spin-slow" />
-                Live Geotracking
-              </span>
-              <h2 className="text-2xl font-bold mt-2.5">Tutor Transit Status</h2>
-              <p className="text-sm text-primary-foreground/75 mt-0.5">Live updates sharing started 30 mins before the session</p>
-            </div>
-            {tutorLocation ? (
-              <div className="text-right">
-                <div className="text-3xl font-display font-medium text-gold">{eta}</div>
-                <div className="text-xs uppercase tracking-wider text-primary-foreground/60">Estimated ETA</div>
+      {isSessionActive && (
+        <Card className="border-accent/30 overflow-hidden shadow-emerald">
+          <div className="bg-gradient-hero text-primary-foreground p-6">
+            <div className="flex justify-between items-start flex-wrap gap-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/20 border border-accent/30 text-xs font-semibold uppercase tracking-wider text-accent-foreground">
+                  <Compass className="w-3.5 h-3.5 animate-spin-slow" />
+                  Live Geotracking
+                </span>
+                <h2 className="text-2xl font-bold mt-2.5">Tutor Transit Status</h2>
+                <p className="text-sm text-primary-foreground/75 mt-0.5">Live updates sharing started 30 mins before the session</p>
               </div>
-            ) : (
-              <div className="text-right text-xs bg-muted/20 border border-white/10 px-3 py-1.5 rounded-lg text-primary-foreground/70">
-                Awaiting updates
-              </div>
-            )}
-          </div>
-        </div>
-        <CardContent className="pt-6">
-          <div className="grid md:grid-cols-3 gap-6 items-center">
-            {/* Google Map Check-in Embed */}
-            <div className="md:col-span-2 relative h-64 rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
               {tutorLocation ? (
-                <iframe
-                  title="Live Google Map Transit Route"
-                  src={`https://maps.google.com/maps?saddr=${tutorLocation.lat},${tutorLocation.lng}&daddr=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                  className="w-full h-full border-0 rounded-xl"
-                  allowFullScreen
-                  loading="lazy"
-                />
+                <div className="text-right">
+                  <div className="text-3xl font-display font-medium text-gold">{eta}</div>
+                  <div className="text-xs uppercase tracking-wider text-primary-foreground/60">Estimated ETA</div>
+                </div>
               ) : (
-                <iframe
-                  title="Home Google Map Location"
-                  src={`https://maps.google.com/maps?q=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                  className="w-full h-full border-0 rounded-xl"
-                  allowFullScreen
-                  loading="lazy"
-                />
+                <div className="text-right text-xs bg-muted/20 border border-white/10 px-3 py-1.5 rounded-lg text-primary-foreground/70">
+                  Awaiting updates
+                </div>
               )}
-              <div className="absolute bottom-2 left-2 text-[10px] bg-card/85 border border-border text-muted-foreground px-2 py-1 rounded backdrop-blur font-mono shadow-md">
-                {tutorLocation 
-                  ? `Tutor GPS: ${tutorLocation.lat.toFixed(4)}, ${tutorLocation.lng.toFixed(4)}`
-                  : `Home GPS: ${homeCoords.lat.toFixed(4)}, ${homeCoords.lng.toFixed(4)}`
-                }
-              </div>
             </div>
-
-            {/* Travel stats pane */}
-            <div className="space-y-4">
-              <div className="border-b border-border pb-3">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider">Tutor Status</div>
-                <div className="text-lg font-semibold flex items-center gap-1.5 mt-0.5">
-                  <span className={`w-2 h-2 rounded-full ${tutorLocation ? "bg-accent animate-pulse" : "bg-muted"}`} />
-                  {tutorLocation ? "In Transit" : "Offline / Unscheduled"}
+          </div>
+          <CardContent className="pt-6">
+            <div className="grid md:grid-cols-3 gap-6 items-center">
+              {/* Google Map Check-in Embed */}
+              <div className="md:col-span-2 relative h-64 rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
+                {tutorLocation ? (
+                  <iframe
+                    title="Live Google Map Transit Route"
+                    src={`https://maps.google.com/maps?saddr=${tutorLocation.lat},${tutorLocation.lng}&daddr=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                    className="w-full h-full border-0 rounded-xl"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                ) : (
+                  <iframe
+                    title="Home Google Map Location"
+                    src={`https://maps.google.com/maps?q=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                    className="w-full h-full border-0 rounded-xl"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                )}
+                <div className="absolute bottom-2 left-2 text-[10px] bg-card/85 border border-border text-muted-foreground px-2 py-1 rounded backdrop-blur font-mono shadow-md">
+                  {tutorLocation 
+                    ? `Tutor GPS: ${tutorLocation.lat.toFixed(4)}, ${tutorLocation.lng.toFixed(4)}`
+                    : `Home GPS: ${homeCoords.lat.toFixed(4)}, ${homeCoords.lng.toFixed(4)}`
+                  }
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">Distance</div>
-                  <div className="font-semibold">{formattedDistance}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Last Ping</div>
-                  <div className="font-semibold">
-                    {tutorLocation 
-                      ? new Date(tutorLocation.updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                      : "—"
-                    }
+
+              {/* Travel stats pane */}
+              <div className="space-y-4">
+                <div className="border-b border-border pb-3">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Tutor Status</div>
+                  <div className="text-lg font-semibold flex items-center gap-1.5 mt-0.5">
+                    <span className={`w-2 h-2 rounded-full ${tutorLocation ? "bg-accent animate-pulse" : "bg-muted"}`} />
+                    {tutorLocation ? "In Transit" : "Offline / Unscheduled"}
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Distance</div>
+                    <div className="font-semibold">{formattedDistance}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Last Ping</div>
+                    <div className="font-semibold">
+                      {tutorLocation 
+                        ? new Date(tutorLocation.updated).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                        : "—"
+                      }
+                    </div>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full text-xs"
+                  onClick={() => {
+                    if (tutorLocation) {
+                      toast.info("Map updated with latest GPS coordinates.");
+                    } else {
+                      // Start simulated movement for testing
+                      setTutorLocation({ lat: 24.8550, lng: 66.9950, updated: new Date().toISOString() });
+                      toast.success("Simulation started! Location ping registered.");
+                    }
+                  }}
+                >
+                  {tutorLocation ? "Refresh Geotags" : "Simulate Tutor Movement"}
+                </Button>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full text-xs"
-                onClick={() => {
-                  if (tutorLocation) {
-                    toast.info("Map updated with latest GPS coordinates.");
-                  } else {
-                    // Start simulated movement for testing
-                    setTutorLocation({ lat: 24.8550, lng: 66.9950, updated: new Date().toISOString() });
-                    toast.success("Simulation started! Location ping registered.");
-                  }
-                }}
-              >
-                {tutorLocation ? "Refresh Geotags" : "Simulate Tutor Movement"}
-              </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

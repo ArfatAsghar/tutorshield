@@ -322,12 +322,14 @@ CREATE TRIGGER on_auth_user_created
 ALTER TABLE public.messages REPLICA IDENTITY FULL;
 ALTER TABLE public.tutor_locations REPLICA IDENTITY FULL;
 ALTER TABLE public.bookings REPLICA IDENTITY FULL;
+ALTER TABLE public.attendance REPLICA IDENTITY FULL;
 
 DROP PUBLICATION IF EXISTS supabase_realtime CASCADE;
 CREATE PUBLICATION supabase_realtime FOR TABLE
     public.messages,
     public.tutor_locations,
-    public.bookings;
+    public.bookings,
+    public.attendance;
 
 
 -- ====================================================================
