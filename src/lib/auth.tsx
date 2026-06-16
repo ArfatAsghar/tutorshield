@@ -21,6 +21,8 @@ interface AuthCtx {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (patch: Partial<User>) => void;
+  signInWithGoogle: (role?: Role) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -177,6 +179,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithGoogle = async (role?: Role) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+          ...(role ? { data: { role } } : {}),
+        },
+      });
+      if (error) throw new Error(error.message);
+    } else {
+      const u: User = {
+        id: crypto.randomUUID(),
+        name: "Google User",
+        email: "google@example.com",
+        role: role || "parent",
+        verified: false,
+      };
+      persistMock(u);
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw new Error(error.message);
+    }
+  };
+
   const refreshUser = async () => {
     if (!isSupabaseConfigured || !user) return;
     await fetchAndSetUserProfile(user.id, user.email);
@@ -193,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, signup, logout, refreshUser, updateUser }}>
+    <Ctx.Provider value={{ user, loading, login, signup, logout, refreshUser, updateUser, signInWithGoogle, resetPassword }}>
       {children}
     </Ctx.Provider>
   );
