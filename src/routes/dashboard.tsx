@@ -448,6 +448,7 @@ function ParentDash() {
             <CardHeader><CardTitle>Quick actions</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <Link to="/tutors" className="block"><Button variant="outline" className="w-full justify-start">Find more tutors</Button></Link>
+              <Link to="/attendance" className="block"><Button variant="outline" className="w-full justify-start">View attendance logs</Button></Link>
               <Link to="/progress" className="block"><Button variant="outline" className="w-full justify-start">View progress reports</Button></Link>
               <Link to="/messages" className="block"><Button variant="outline" className="w-full justify-start">Open messages</Button></Link>
               <Link to="/payments" className="block"><Button variant="outline" className="w-full justify-start">Manage payments</Button></Link>

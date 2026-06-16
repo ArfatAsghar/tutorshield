@@ -11,6 +11,7 @@ import { toast } from "sonner";
 const parentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/tutors", label: "Find Tutors", icon: Users },
+  { to: "/attendance", label: "Attendance", icon: MapPin },
   { to: "/progress", label: "Progress", icon: FileText },
   { to: "/messages", label: "Messages", icon: MessageSquare },
   { to: "/reviews", label: "Reviews", icon: Star },
