@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.profiles ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS username_last_changed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS home_latitude NUMERIC;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS home_longitude NUMERIC;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS home_address TEXT;
 
 -- Notify PostgREST to reload schema cache
 NOTIFY pgrst, 'reload schema';
@@ -226,7 +229,9 @@ DROP POLICY IF EXISTS "Allow public read access to locations" ON public.tutor_lo
 CREATE POLICY "Allow public read access to locations" ON public.tutor_locations
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Allow tutors to insert their own location" ON public.tutor_locations;
 DROP POLICY IF EXISTS "Allow tutors to update their own location" ON public.tutor_locations;
+
 CREATE POLICY "Allow tutors to insert their own location" ON public.tutor_locations
     FOR INSERT WITH CHECK (auth.uid() = tutor_id);
 

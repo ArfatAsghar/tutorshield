@@ -36,11 +36,26 @@ function ParentDash() {
 
   // Geotracking states for tutor
   const [tutorLocation, setTutorLocation] = useState<{ lat: number; lng: number; updated: string } | null>(null);
+  const [homeCoords, setHomeCoords] = useState<{ lat: number; lng: number }>({ lat: 24.8607, lng: 67.0011 });
 
   const loadParentData = async () => {
     setLoading(true);
     if (isSupabaseConfigured && user) {
       try {
+        // Fetch parent home location coordinates
+        const { data: parentProfile } = await supabase
+          .from("profiles")
+          .select("home_latitude, home_longitude")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (parentProfile?.home_latitude && parentProfile?.home_longitude) {
+          setHomeCoords({
+            lat: Number(parentProfile.home_latitude),
+            lng: Number(parentProfile.home_longitude),
+          });
+        }
+        
         // 1. Fetch tutor list to select "Your tutor"
         const { data: tutorsData, error: tutorsErr } = await supabase
           .from("tutors")
@@ -208,7 +223,7 @@ function ParentDash() {
           table: "tutor_locations",
           filter: `tutor_id=eq.${tutor.id}`
         },
-        (payload) => {
+        (payload: any) => {
           const loc = payload.new as { latitude?: number; longitude?: number; updated_at?: string } | undefined;
           if (loc) {
             setTutorLocation({
@@ -227,7 +242,6 @@ function ParentDash() {
   }, [tutor?.id]);
 
   // Estimate distance (simple distance computation or mock Lahore coordinate anchor 24.86, 67.00)
-  const homeCoords = { lat: 24.8607, lng: 67.0011 }; // Center coordinate anchor
   const distance = tutorLocation
     ? Math.sqrt(Math.pow(tutorLocation.lat - homeCoords.lat, 2) + Math.pow(tutorLocation.lng - homeCoords.lng, 2)) * 111
     : 1.5; // fallback to 1.5 km
@@ -293,48 +307,29 @@ function ParentDash() {
         </div>
         <CardContent className="pt-6">
           <div className="grid md:grid-cols-3 gap-6 items-center">
-            {/* Visual Vector Tracker Map */}
-            <div className="md:col-span-2 relative h-48 rounded-xl bg-muted overflow-hidden border border-border flex items-center justify-center">
-              {/* Map grid lines */}
-              <div className="absolute inset-0 opacity-[0.08]" style={{ backgroundImage: "radial-gradient(circle, #000 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
-              
-              {/* Map Path Vector */}
-              <svg className="absolute w-[85%] h-[75%] opacity-50" viewBox="0 0 100 50">
-                <path d="M 10 40 Q 30 10, 50 30 T 90 10" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4" className="text-muted-foreground" />
-                {tutorLocation && (
-                  <path d="M 10 40 Q 30 10, 50 30 T 90 10" fill="none" stroke="oklch(var(--a))" strokeWidth="3" strokeDasharray="100" strokeDashoffset={75} className="animate-dash" />
-                )}
-              </svg>
-
-              {/* Pins */}
-              {/* Parent Home Pin */}
-              <div className="absolute right-[10%] top-[15%] flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white ring-4 ring-primary/20 shadow-lg">
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-semibold mt-1 bg-card border border-border px-1.5 py-0.5 rounded shadow text-foreground">Home</span>
-              </div>
-
-              {/* Tutor Marker */}
-              <div 
-                className="absolute flex flex-col items-center transition-all duration-1000"
-                style={{ 
-                  left: tutorLocation ? "48%" : "12%", 
-                  top: tutorLocation ? "52%" : "70%" 
-                }}
-              >
-                <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-accent-foreground ring-4 ring-accent/30 shadow-lg animate-bounce">
-                  <Navigation className="w-4 h-4 rotate-45" />
-                </div>
-                <span className="text-[10px] font-semibold mt-1 bg-card border border-border px-1.5 py-0.5 rounded shadow text-foreground capitalize">
-                  {tutor?.name?.split(" ")[0] || "Tutor"}
-                </span>
-              </div>
-
-              <div className="absolute bottom-2 left-2 text-[10px] bg-card/80 border border-border/50 text-muted-foreground px-2 py-1 rounded backdrop-blur">
+            {/* Google Map Check-in Embed */}
+            <div className="md:col-span-2 relative h-64 rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
+              {tutorLocation ? (
+                <iframe
+                  title="Live Google Map Transit Route"
+                  src={`https://maps.google.com/maps?saddr=${tutorLocation.lat},${tutorLocation.lng}&daddr=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                  className="w-full h-full border-0 rounded-xl"
+                  allowFullScreen
+                  loading="lazy"
+                />
+              ) : (
+                <iframe
+                  title="Home Google Map Location"
+                  src={`https://maps.google.com/maps?q=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                  className="w-full h-full border-0 rounded-xl"
+                  allowFullScreen
+                  loading="lazy"
+                />
+              )}
+              <div className="absolute bottom-2 left-2 text-[10px] bg-card/85 border border-border text-muted-foreground px-2 py-1 rounded backdrop-blur font-mono shadow-md">
                 {tutorLocation 
-                  ? `Lat: ${tutorLocation.lat.toFixed(4)}, Lng: ${tutorLocation.lng.toFixed(4)}`
-                  : "Using template GPS anchor"
+                  ? `Tutor GPS: ${tutorLocation.lat.toFixed(4)}, ${tutorLocation.lng.toFixed(4)}`
+                  : `Home GPS: ${homeCoords.lat.toFixed(4)}, ${homeCoords.lng.toFixed(4)}`
                 }
               </div>
             </div>

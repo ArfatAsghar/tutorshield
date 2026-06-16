@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { User as UserIcon, Camera, Loader2, Calendar, GraduationCap } from "lucide-react";
+import { User as UserIcon, Camera, Loader2, Calendar, GraduationCap, MapPin } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings — TutorShield" }] }),
@@ -47,6 +47,11 @@ function SettingsPage() {
   const [experience, setExperience] = useState(0);
   const [bio, setBio] = useState("");
 
+  // Parent location fields
+  const [homeAddress, setHomeAddress] = useState("");
+  const [homeLatitude, setHomeLatitude] = useState<number | null>(null);
+  const [homeLongitude, setHomeLongitude] = useState<number | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -73,6 +78,9 @@ function SettingsPage() {
             setName(profile.name);
             setAvatar(profile.avatar || "");
             setLastChanged(profile.username_last_changed_at || null);
+            setHomeAddress(profile.home_address || "");
+            setHomeLatitude(profile.home_latitude ? Number(profile.home_latitude) : null);
+            setHomeLongitude(profile.home_longitude ? Number(profile.home_longitude) : null);
           }
 
           // If tutor, load tutor details
@@ -226,6 +234,52 @@ function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleUpdateHomeLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (isSupabaseConfigured && user) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            home_address: homeAddress.trim(),
+            home_latitude: homeLatitude,
+            home_longitude: homeLongitude,
+          })
+          .eq("id", user.id);
+
+        if (error) throw error;
+        toast.success("Home location settings saved successfully!");
+      } else {
+        toast.success("Home location saved (Local Session Only)!");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save home location");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const detectHomeLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+    const toastId = toast.loading("Detecting current coordinates...");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setHomeLatitude(position.coords.latitude);
+        setHomeLongitude(position.coords.longitude);
+        toast.dismiss(toastId);
+        toast.success("Current location coordinates detected!");
+      },
+      (error) => {
+        toast.dismiss(toastId);
+        toast.error(`Could not detect location: ${error.message}`);
+      }
+    );
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -512,6 +566,53 @@ function SettingsPage() {
                       "Save Tutor Profile"
                     )}
                   </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Home Location Settings Form (Parents Only) */}
+          {user?.role === "parent" && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-6 h-6 text-primary" />
+                  <CardTitle>Home Location Settings</CardTitle>
+                </div>
+                <CardDescription>Configure your home address and GPS coordinates for accurate tutor distance estimates and real-time transit tracking.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleUpdateHomeLocation} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="homeAddress">Home Address</Label>
+                    <Input id="homeAddress" value={homeAddress} onChange={(e) => setHomeAddress(e.target.value)} placeholder="House 123, Block Y, DHA Phase 3, Lahore" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="homeLatitude">Home Latitude</Label>
+                      <Input id="homeLatitude" type="number" step="any" value={homeLatitude !== null ? homeLatitude : ""} onChange={(e) => setHomeLatitude(e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 31.4758" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="homeLongitude">Home Longitude</Label>
+                      <Input id="homeLongitude" type="number" step="any" value={homeLongitude !== null ? homeLongitude : ""} onChange={(e) => setHomeLongitude(e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 74.3411" />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <Button type="submit" disabled={saving}>
+                      {saving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                        </>
+                      ) : (
+                        "Save Home Location"
+                      )}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={detectHomeLocation} className="gap-1.5">
+                      <MapPin className="w-4 h-4" /> Use Current Location
+                    </Button>
+                  </div>
                 </form>
               </CardContent>
             </Card>
