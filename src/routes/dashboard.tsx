@@ -24,6 +24,7 @@ function Dashboard() {
 function ParentDash() {
   const { user } = useAuth();
   const [tutor, setTutor] = useState<any>(null);
+  const [parentBookings, setParentBookings] = useState<any[]>([]);
   const [stats, setStats] = useState({
     activeTutors: "0",
     sessionsThisMonth: "0",
@@ -36,106 +37,143 @@ function ParentDash() {
   // Geotracking states for tutor
   const [tutorLocation, setTutorLocation] = useState<{ lat: number; lng: number; updated: string } | null>(null);
 
-  useEffect(() => {
-    const loadParentData = async () => {
-      setLoading(true);
-      if (isSupabaseConfigured) {
-        try {
-          // 1. Fetch tutor list to select "Your tutor"
-          const { data: tutorsData, error: tutorsErr } = await supabase
-            .from("tutors")
-            .select(`
-              id, subjects, rating, reviews, hourly_rate, city, experience, bio, badges,
-              profiles (name, avatar, verified)
-            `)
-            .limit(1);
+  const loadParentData = async () => {
+    setLoading(true);
+    if (isSupabaseConfigured && user) {
+      try {
+        // 1. Fetch tutor list to select "Your tutor"
+        const { data: tutorsData, error: tutorsErr } = await supabase
+          .from("tutors")
+          .select(`
+            id, subjects, rating, reviews, hourly_rate, city, experience, bio, badges,
+            profiles (name, avatar, verified)
+          `)
+          .limit(1);
 
-          let selectedTutor = null;
-          if (tutorsData && tutorsData.length > 0 && !tutorsErr) {
-            const t = tutorsData[0];
-            const profile = Array.isArray(t.profiles) ? t.profiles[0] : t.profiles;
-            selectedTutor = {
-              id: t.id,
-              name: profile?.name || "Tutor",
-              subjects: t.subjects || [],
-              rating: t.rating || 5.0,
-              reviews: t.reviews || 0,
-              avatar: profile?.avatar || "https://api.dicebear.com/9.x/notionists/svg?seed=tutor",
-              verified: profile?.verified ?? false,
-            };
-          } else {
-            selectedTutor = null;
-          }
-          setTutor(selectedTutor);
-
-          // 2. Fetch progress reports
-          const { data: reports, error: reportsErr } = await supabase
-            .from("progress_reports")
-            .select("*")
-            .order("created_at", { ascending: false });
-
-          let fetchedReports: any[] = [];
-          if (reports && !reportsErr) {
-            fetchedReports = reports.map((r: any) => ({
-              id: r.id,
-              topic: r.topic,
-              date: new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-              notes: r.notes,
-              rating: r.rating,
-            }));
-          } else {
-            fetchedReports = [];
-          }
-          setRecentReports(fetchedReports);
-
-          // Calculate parent stats
-          const uniqueTutorIds = new Set(reports?.map((r: any) => r.tutor_id).filter(Boolean) || []);
-          const activeTutorsCount = uniqueTutorIds.size || (selectedTutor ? 1 : 0);
-
-          const now = new Date();
-          const reportsThisMonth = reports?.filter((r: any) => {
-            const d = new Date(r.created_at);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-          }) || [];
-          const sessionsCount = reportsThisMonth.length;
-
-          const avg = reports && reports.length > 0
-            ? (reports.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reports.length).toFixed(1) + "★"
-            : "—";
-
-          const { data: activeAttendance } = await supabase
-            .from("attendance")
-            .select("*")
-            .is("check_out_time", null)
-            .limit(1);
-
-          const nextSessionTime = activeAttendance && activeAttendance.length > 0 ? "In Progress" : "—";
-
-          setStats({
-            activeTutors: String(activeTutorsCount),
-            sessionsThisMonth: String(sessionsCount),
-            avgProgress: avg,
-            nextSession: nextSessionTime,
-          });
-
-        } catch (err) {
-          console.error("Error loading parent dashboard data:", err);
+        let selectedTutor = null;
+        if (tutorsData && tutorsData.length > 0 && !tutorsErr) {
+          const t = tutorsData[0];
+          const profile = Array.isArray(t.profiles) ? t.profiles[0] : t.profiles;
+          selectedTutor = {
+            id: t.id,
+            name: profile?.name || "Tutor",
+            subjects: t.subjects || [],
+            rating: t.rating || 5.0,
+            reviews: t.reviews || 0,
+            avatar: profile?.avatar || "https://api.dicebear.com/9.x/notionists/svg?seed=tutor",
+            verified: profile?.verified ?? false,
+          };
         }
-      } else {
-        setTutor(null);
-        setRecentReports([]);
-        setStats({
-          activeTutors: "0",
-          sessionsThisMonth: "0",
-          avgProgress: "—",
-          nextSession: "—",
-        });
-      }
-      setLoading(false);
-    };
+        setTutor(selectedTutor);
 
+        // 2. Fetch progress reports
+        const { data: reports, error: reportsErr } = await supabase
+          .from("progress_reports")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        let fetchedReports: any[] = [];
+        if (reports && !reportsErr) {
+          fetchedReports = reports.map((r: any) => ({
+            id: r.id,
+            topic: r.topic,
+            date: new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            notes: r.notes,
+            rating: r.rating,
+          }));
+        }
+        setRecentReports(fetchedReports);
+
+        // 3. Fetch Parent Bookings
+        const { data: bookingsData } = await supabase
+          .from("bookings")
+          .select("*, profiles!bookings_tutor_id_fkey (name, avatar)")
+          .eq("parent_id", user.id)
+          .order("booking_date", { ascending: true })
+          .order("booking_time", { ascending: true });
+
+        const bookingsList = bookingsData || [];
+        setParentBookings(bookingsList);
+
+        const approvedBookings = bookingsList.filter((b) => b.status === "Accepted");
+
+        // Calculate parent stats
+        const uniqueTutorIds = new Set(reports?.map((r: any) => r.tutor_id).filter(Boolean) || []);
+        const activeTutorsCount = uniqueTutorIds.size || (selectedTutor ? 1 : 0);
+        const sessionsCount = approvedBookings.length;
+
+        const avg = reports && reports.length > 0
+          ? (reports.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reports.length).toFixed(1) + "★"
+          : "—";
+
+        const { data: activeAttendance } = await supabase
+          .from("attendance")
+          .select("*")
+          .is("check_out_time", null)
+          .limit(1);
+
+        const nextBooking = approvedBookings[0];
+        const nextSessionTime = activeAttendance && activeAttendance.length > 0
+          ? "In Progress"
+          : (nextBooking ? `${new Date(nextBooking.booking_date).toLocaleDateString([], { month: "short", day: "numeric" })} ${nextBooking.booking_time}` : "—");
+
+        setStats({
+          activeTutors: String(activeTutorsCount),
+          sessionsThisMonth: String(sessionsCount),
+          avgProgress: avg,
+          nextSession: nextSessionTime,
+        });
+
+      } catch (err) {
+        console.error("Error loading parent dashboard data:", err);
+      }
+    } else {
+      setTutor(null);
+      setRecentReports([]);
+      setParentBookings([]);
+      setStats({
+        activeTutors: "0",
+        sessionsThisMonth: "0",
+        avgProgress: "—",
+        nextSession: "—",
+      });
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
     loadParentData();
-  }, []);
+  }, [user]);
+
+  // Live real-time subscription for parent bookings
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+    const channel = supabase
+      .channel("parent-bookings-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings", filter: `parent_id=eq.${user.id}` }, () => {
+        loadParentData();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const cancelBooking = async (id: string) => {
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from("bookings").delete().eq("id", id);
+        if (error) throw error;
+        toast.success("Booking request cancelled.");
+        loadParentData();
+      } else {
+        setParentBookings(prev => prev.filter(b => b.id !== id));
+        toast.success("Demo: Booking request cancelled.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel booking.");
+    }
+  };
 
   // Subscribe to real-time location changes of the active tutor
   useEffect(() => {
@@ -346,29 +384,71 @@ function ParentDash() {
         </CardContent>
       </Card>
 
-      {tutor && (
-        <div className="grid lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2">
-            <CardHeader><CardTitle>Your tutor</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex items-start gap-4">
-                <img src={tutor.avatar} alt="" className="w-16 h-16 rounded-full bg-muted" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-lg">{tutor.name}</h3>
-                    {tutor.verified && <Badge className="bg-accent text-accent-foreground gap-1"><Shield className="w-3 h-3" />Verified</Badge>}
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          {tutor && (
+            <Card>
+              <CardHeader><CardTitle>Your tutor</CardTitle></CardHeader>
+              <CardContent>
+                <div className="flex items-start gap-4">
+                  <img src={tutor.avatar} alt="" className="w-16 h-16 rounded-full bg-muted" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-lg">{tutor.name}</h3>
+                      {tutor.verified && <Badge className="bg-accent text-accent-foreground gap-1"><Shield className="w-3 h-3" />Verified</Badge>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{tutor.subjects?.join(" · ")}</p>
+                    <div className="flex items-center gap-3 mt-2 text-sm">
+                      <span className="flex items-center gap-1"><Star className="w-4 h-4 fill-warning text-warning" />{tutor.rating}</span>
+                      <span className="text-muted-foreground">{tutor.reviews} reviews</span>
+                    </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">{tutor.subjects?.join(" · ")}</p>
-                  <div className="flex items-center gap-3 mt-2 text-sm">
-                    <span className="flex items-center gap-1"><Star className="w-4 h-4 fill-warning text-warning" />{tutor.rating}</span>
-                    <span className="text-muted-foreground">{tutor.reviews} reviews</span>
-                  </div>
+                  <Link to="/tutors/$id" params={{ id: tutor.id }}><Button variant="outline" size="sm">View profile</Button></Link>
                 </div>
-                <Link to="/tutors/$id" params={{ id: tutor.id }}><Button variant="outline" size="sm">View profile</Button></Link>
-              </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader><CardTitle>Session Requests & Bookings</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {parentBookings.length === 0 ? (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  No session requests or scheduled bookings yet.
+                </div>
+              ) : (
+                parentBookings.map((b) => {
+                  const prof = Array.isArray(b.profiles) ? b.profiles[0] : b.profiles;
+                  const tutorName = prof?.name || "Tutor";
+                  const avatar = prof?.avatar || "https://api.dicebear.com/9.x/notionists/svg?seed=tutor";
+                  return (
+                    <div key={b.id} className="flex flex-wrap items-center justify-between gap-4 p-3 rounded-lg border border-border bg-card">
+                      <div className="flex items-center gap-3">
+                        <img src={avatar} alt="" className="w-10 h-10 rounded-full bg-muted" />
+                        <div>
+                          <p className="font-medium text-sm">{tutorName}</p>
+                          <p className="text-xs text-muted-foreground">{b.subject} · {new Date(b.booking_date).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} at {b.booking_time}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={b.status === "Accepted" ? "default" : b.status === "Declined" ? "destructive" : "secondary"}>
+                          {b.status}
+                        </Badge>
+                        {b.status === "Pending" && (
+                          <Button variant="ghost" size="sm" className="text-xs text-destructive hover:bg-destructive/10 h-7" onClick={() => cancelBooking(b.id)}>
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </CardContent>
           </Card>
+        </div>
 
+        <div className="space-y-6">
           <Card>
             <CardHeader><CardTitle>Quick actions</CardTitle></CardHeader>
             <CardContent className="space-y-2">
@@ -379,7 +459,7 @@ function ParentDash() {
             </CardContent>
           </Card>
         </div>
-      )}
+      </div>
 
       <Card>
         <CardHeader><CardTitle>Recent progress</CardTitle></CardHeader>
@@ -414,101 +494,161 @@ function TutorDash() {
     earningsMo: "$0",
   });
   const [todaySessions, setTodaySessions] = useState<any[]>([]);
+  const [pendingBookings, setPendingBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
-    const loadTutorData = async () => {
-      setLoading(true);
-      if (isSupabaseConfigured) {
-        try {
-          // 1. Fetch progress reports or attendance to determine active students count
-          const { data: reports, error: reportsErr } = await supabase
-            .from("progress_reports")
-            .select("student_name, rating")
-            .eq("tutor_id", user.id);
+  const loadTutorData = async () => {
+    setLoading(true);
+    if (isSupabaseConfigured && user) {
+      try {
+        // 1. Fetch progress reports or attendance to determine active students count
+        const { data: reports, error: reportsErr } = await supabase
+          .from("progress_reports")
+          .select("student_name, rating")
+          .eq("tutor_id", user.id);
 
-          const uniqueStudents = new Set(reports?.map((r: any) => r.student_name).filter(Boolean) || []);
-          const activeStudentsCount = uniqueStudents.size;
+        const uniqueStudents = new Set(reports?.map((r: any) => r.student_name).filter(Boolean) || []);
+        const activeStudentsCount = uniqueStudents.size;
 
-          // 2. Fetch reviews for average rating
-          const { data: reviewsData, error: reviewsErr } = await supabase
-            .from("reviews")
-            .select("rating")
-            .eq("tutor_id", user.id);
+        // 2. Fetch reviews for average rating
+        const { data: reviewsData, error: reviewsErr } = await supabase
+          .from("reviews")
+          .select("rating")
+          .eq("tutor_id", user.id);
 
-          const avgRatingVal = reviewsData && reviewsData.length > 0 && !reviewsErr
-            ? (reviewsData.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewsData.length).toFixed(1) + "★"
-            : "—";
+        const avgRatingVal = reviewsData && reviewsData.length > 0 && !reviewsErr
+          ? (reviewsData.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewsData.length).toFixed(1) + "★"
+          : "—";
 
-          // 3. Fetch attendance records in last 7 days for sessions this week
-          const oneWeekAgo = new Date();
-          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-          const { data: attendanceData, error: attErr } = await supabase
-            .from("attendance")
-            .select("id, check_in_time, check_out_time, student_name")
-            .eq("tutor_id", user.id)
-            .gte("check_in_time", oneWeekAgo.toISOString());
+        // 3. Fetch attendance records in last 7 days for sessions this week
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        const { data: attendanceData, error: attErr } = await supabase
+          .from("attendance")
+          .select("id, check_in_time, check_out_time, student_name")
+          .eq("tutor_id", user.id)
+          .gte("check_in_time", oneWeekAgo.toISOString());
 
-          const sessionsWeekCount = attendanceData && !attErr ? attendanceData.length : 0;
+        const sessionsWeekCount = attendanceData && !attErr ? attendanceData.length : 0;
 
-          // 4. Fetch payments to sum monthly earnings
-          const firstDayOfMonth = new Date();
-          firstDayOfMonth.setDate(1);
-          firstDayOfMonth.setHours(0,0,0,0);
-          const { data: paymentsData, error: payErr } = await supabase
-            .from("payments")
-            .select("amount")
-            .eq("tutor_id", user.id)
-            .eq("status", "Paid")
-            .gte("created_at", firstDayOfMonth.toISOString());
+        // 4. Fetch payments to sum monthly earnings
+        const firstDayOfMonth = new Date();
+        firstDayOfMonth.setDate(1);
+        firstDayOfMonth.setHours(0,0,0,0);
+        const { data: paymentsData, error: payErr } = await supabase
+          .from("payments")
+          .select("amount")
+          .eq("tutor_id", user.id)
+          .eq("status", "Paid")
+          .gte("created_at", firstDayOfMonth.toISOString());
 
-          const monthlyEarnings = paymentsData && !payErr
-            ? paymentsData.reduce((sum: number, p: any) => sum + Number(p.amount), 0)
-            : 0;
+        const monthlyEarnings = paymentsData && !payErr
+          ? paymentsData.reduce((sum: number, p: any) => sum + Number(p.amount), 0)
+          : 0;
 
-          setStats({
-            activeStudents: String(activeStudentsCount),
-            sessionsThisWeek: String(sessionsWeekCount),
-            avgRating: avgRatingVal,
-            earningsMo: `$${monthlyEarnings.toLocaleString()}`,
-          });
-
-          // Today's sessions: load active attendance or simple upcoming structure
-          const { data: activeSessions } = await supabase
-            .from("attendance")
-            .select("*")
-            .eq("tutor_id", user.id)
-            .is("check_out_time", null);
-
-          if (activeSessions && activeSessions.length > 0) {
-            setTodaySessions(activeSessions.map((s: any) => ({
-              time: new Date(s.check_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              student: s.student_name,
-              subject: "In Progress Session",
-              active: true
-            })));
-          } else {
-            setTodaySessions([]);
-          }
-
-        } catch (err) {
-          console.error("Error loading tutor dashboard data:", err);
-        }
-      } else {
         setStats({
-          activeStudents: "0",
-          sessionsThisWeek: "0",
-          avgRating: "—",
-          earningsMo: "$0",
+          activeStudents: String(activeStudentsCount),
+          sessionsThisWeek: String(sessionsWeekCount),
+          avgRating: avgRatingVal,
+          earningsMo: `$${monthlyEarnings.toLocaleString()}`,
         });
-        setTodaySessions([]);
-      }
-      setLoading(false);
-    };
 
+        // 5. Fetch bookings to populate requests queue and today's sessions
+        const { data: bookingsData } = await supabase
+          .from("bookings")
+          .select("*, profiles!bookings_parent_id_fkey (name, avatar)")
+          .eq("tutor_id", user.id)
+          .order("booking_date", { ascending: true })
+          .order("booking_time", { ascending: true });
+
+        const bookingsList = bookingsData || [];
+        const pending = bookingsList.filter((b) => b.status === "Pending");
+        const accepted = bookingsList.filter((b) => b.status === "Accepted");
+        setPendingBookings(pending);
+
+        // Fetch today's active sessions (check_out_time is null)
+        const { data: activeSessions } = await supabase
+          .from("attendance")
+          .select("*")
+          .eq("tutor_id", user.id)
+          .is("check_out_time", null);
+
+        const activeSessionsList = (activeSessions || []).map((s: any) => ({
+          time: new Date(s.check_in_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          student: s.student_name,
+          subject: "In Progress Session",
+          active: true
+        }));
+
+        // Filter accepted bookings scheduled for today
+        const todayStr = new Date().toISOString().split("T")[0];
+        const todayBookings = accepted.filter((b) => b.booking_date === todayStr);
+
+        const scheduledSessionsList = todayBookings.map((b) => {
+          const prof = Array.isArray(b.profiles) ? b.profiles[0] : b.profiles;
+          return {
+            time: b.booking_time,
+            student: prof?.name || "Student",
+            subject: b.subject,
+            active: false
+          };
+        });
+
+        setTodaySessions([...activeSessionsList, ...scheduledSessionsList]);
+
+      } catch (err) {
+        console.error("Error loading tutor dashboard data:", err);
+      }
+    } else {
+      setStats({
+        activeStudents: "0",
+        sessionsThisWeek: "0",
+        avgRating: "—",
+        earningsMo: "$0",
+      });
+      setTodaySessions([]);
+      setPendingBookings([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
     loadTutorData();
   }, [user]);
+
+  // Live real-time subscription for tutor bookings
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+    const channel = supabase
+      .channel("tutor-bookings-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings", filter: `tutor_id=eq.${user.id}` }, () => {
+        loadTutorData();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const updateBookingStatus = async (bookingId: string, status: "Accepted" | "Declined") => {
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from("bookings")
+          .update({ status })
+          .eq("id", bookingId);
+
+        if (error) throw error;
+        toast.success(`Booking request ${status.toLowerCase()}!`);
+        loadTutorData();
+      } else {
+        toast.success(`Demo: Booking request ${status.toLowerCase()}!`);
+        setPendingBookings(prev => prev.filter(b => b.id !== bookingId));
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update booking status.");
+    }
+  };
 
   if (loading) {
     return (
@@ -555,38 +695,82 @@ function TutorDash() {
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader><CardTitle>Today's sessions</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {todaySessions.length === 0 ? (
-              <div className="text-center py-6 text-sm text-muted-foreground">
-                No active or scheduled sessions for today.
-              </div>
-            ) : (
-              todaySessions.map((s, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                  <div className="text-sm font-semibold w-16">{s.time}</div>
-                  <div className="flex-1">
-                    <p className="font-medium">{s.student}</p>
-                    <p className="text-xs text-muted-foreground">{s.subject}</p>
-                  </div>
-                  <Link to="/attendance"><Button size="sm" variant={s.active ? "default" : "outline"}>{s.active ? "Active" : "Check in"}</Button></Link>
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader><CardTitle>Today's sessions</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {todaySessions.length === 0 ? (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  No active or scheduled sessions for today.
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                todaySessions.map((s, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                    <div className="text-sm font-semibold w-16">{s.time}</div>
+                    <div className="flex-1">
+                      <p className="font-medium">{s.student}</p>
+                      <p className="text-xs text-muted-foreground">{s.subject}</p>
+                    </div>
+                    <Link to="/attendance"><Button size="sm" variant={s.active ? "default" : "outline"}>{s.active ? "Active" : "Check in"}</Button></Link>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Quick actions</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            <Link to="/attendance" className="block"><Button variant="outline" className="w-full justify-start">Geo check-in / out</Button></Link>
-            <Link to="/progress" className="block"><Button variant="outline" className="w-full justify-start">Submit progress report</Button></Link>
-            <Link to="/messages" className="block"><Button variant="outline" className="w-full justify-start">Parent messages</Button></Link>
-            <Link to="/payments" className="block"><Button variant="outline" className="w-full justify-start">Earnings & payouts</Button></Link>
-          </CardContent>
-        </Card>
+          {pendingBookings.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-gold" />
+                  Pending Session Requests ({pendingBookings.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {pendingBookings.map((b) => {
+                  const prof = Array.isArray(b.profiles) ? b.profiles[0] : b.profiles;
+                  const parentName = prof?.name || "Parent";
+                  const avatar = prof?.avatar || "https://api.dicebear.com/9.x/notionists/svg?seed=Parent";
+                  return (
+                    <div key={b.id} className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl border border-border bg-card">
+                      <div className="flex items-center gap-3">
+                        <img src={avatar} alt="" className="w-10 h-10 rounded-full bg-muted" />
+                        <div>
+                          <p className="font-semibold text-sm">{parentName}</p>
+                          <p className="text-xs text-muted-foreground">Subject: {b.subject}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {new Date(b.booking_date).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} at {b.booking_time}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" className="text-xs border-destructive/30 hover:bg-destructive/10 text-destructive h-8" onClick={() => updateBookingStatus(b.id, "Declined")}>
+                          Decline
+                        </Button>
+                        <Button size="sm" className="text-xs shadow-emerald h-8" onClick={() => updateBookingStatus(b.id, "Accepted")}>
+                          Accept
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <div>
+          <Card>
+            <CardHeader><CardTitle>Quick actions</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <Link to="/attendance" className="block"><Button variant="outline" className="w-full justify-start">Geo check-in / out</Button></Link>
+              <Link to="/progress" className="block"><Button variant="outline" className="w-full justify-start">Submit progress report</Button></Link>
+              <Link to="/messages" className="block"><Button variant="outline" className="w-full justify-start">Parent messages</Button></Link>
+              <Link to="/payments" className="block"><Button variant="outline" className="w-full justify-start">Earnings & payouts</Button></Link>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

@@ -124,6 +124,20 @@ CREATE TABLE IF NOT EXISTS public.tutor_locations (
 
 ALTER TABLE public.tutor_locations ENABLE ROW LEVEL SECURITY;
 
+-- 9. Bookings Table (Session request and scheduling)
+CREATE TABLE IF NOT EXISTS public.bookings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    parent_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    tutor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL,
+    booking_date DATE NOT NULL,
+    booking_time TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Accepted', 'Declined')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+
 
 -- ====================================================================
 -- SECTION 2: ROW LEVEL SECURITY POLICIES
@@ -219,6 +233,23 @@ CREATE POLICY "Allow tutors to insert their own location" ON public.tutor_locati
 CREATE POLICY "Allow tutors to update their own location" ON public.tutor_locations
     FOR UPDATE USING (auth.uid() = tutor_id) WITH CHECK (auth.uid() = tutor_id);
 
+-- ── Bookings ──────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Allow users to view their related bookings" ON public.bookings;
+CREATE POLICY "Allow users to view their related bookings" ON public.bookings
+    FOR SELECT USING (auth.uid() = parent_id OR auth.uid() = tutor_id);
+
+DROP POLICY IF EXISTS "Allow parents to insert bookings" ON public.bookings;
+CREATE POLICY "Allow parents to insert bookings" ON public.bookings
+    FOR INSERT WITH CHECK (auth.uid() = parent_id);
+
+DROP POLICY IF EXISTS "Allow tutors to update bookings" ON public.bookings;
+CREATE POLICY "Allow tutors to update bookings" ON public.bookings
+    FOR UPDATE USING (auth.uid() = tutor_id) WITH CHECK (auth.uid() = tutor_id);
+
+DROP POLICY IF EXISTS "Allow parents to cancel bookings" ON public.bookings;
+CREATE POLICY "Allow parents to cancel bookings" ON public.bookings
+    FOR DELETE USING (auth.uid() = parent_id);
+
 
 -- ====================================================================
 -- SECTION 3: TRIGGER — Auto-create profile + tutors row on signup
@@ -285,11 +316,13 @@ CREATE TRIGGER on_auth_user_created
 
 ALTER TABLE public.messages REPLICA IDENTITY FULL;
 ALTER TABLE public.tutor_locations REPLICA IDENTITY FULL;
+ALTER TABLE public.bookings REPLICA IDENTITY FULL;
 
 DROP PUBLICATION IF EXISTS supabase_realtime CASCADE;
 CREATE PUBLICATION supabase_realtime FOR TABLE
     public.messages,
-    public.tutor_locations;
+    public.tutor_locations,
+    public.bookings;
 
 
 -- ====================================================================

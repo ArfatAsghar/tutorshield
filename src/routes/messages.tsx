@@ -162,6 +162,17 @@ function Messages() {
     loadContacts(tutorId);
   }, [user, tutorId]);
 
+  // Synchronize active contact ID globally for notifications filter
+  useEffect(() => {
+    (window as any).__activeContactId = activeContactId;
+    if (activeContactId) {
+      window.dispatchEvent(new CustomEvent("chat-read", { detail: { contactId: activeContactId } }));
+    }
+    return () => {
+      (window as any).__activeContactId = null;
+    };
+  }, [activeContactId]);
+
   // Load chat history for the active contact
   useEffect(() => {
     if (!activeContactId || !user) return;
@@ -212,27 +223,27 @@ function Messages() {
           {
             event: "INSERT",
             schema: "public",
-            table: "messages"
+            table: "messages",
+            filter: `recipient_id=eq.${user.id}`
           },
           (payload) => {
             const newMsg = payload.new;
             // Validate if the message belongs to current chat context
-            if (
-              (newMsg.sender_id === user.id && newMsg.recipient_id === activeContactId) ||
-              (newMsg.sender_id === activeContactId && newMsg.recipient_id === user.id)
-            ) {
+            if (newMsg.sender_id === activeContactId) {
               setMsgs((prev) => {
                 if (prev.some((m) => m.id === newMsg.id)) return prev;
                 return [
                   ...prev,
                   {
                     id: newMsg.id,
-                    from: newMsg.sender_id === user.id ? user.role : (user.role === "tutor" ? "parent" : "tutor"),
+                    from: user.role === "tutor" ? "parent" : "tutor",
                     text: newMsg.text,
                     time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                   }
                 ];
               });
+              // Clear notification badge
+              window.dispatchEvent(new CustomEvent("chat-read", { detail: { contactId: activeContactId } }));
             }
             // Trigger background reload on contact list to show last preview text
             loadContacts();

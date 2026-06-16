@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { RequireAuth } from "@/components/AppShell";
+import { useAuth } from "@/lib/auth";
 import { mapTutorRow } from "@/lib/tutor-types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,78 @@ export const Route = createFileRoute("/tutors/$id")({
 
 function TutorDetail() {
   const { id } = useParams({ from: "/tutors/$id" });
+  const { user } = useAuth();
   const [tutor, setTutor] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Booking states
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [bookingSubject, setBookingSubject] = useState("");
+  const [bookingDate, setBookingDate] = useState(tomorrowStr);
+  const [bookingTime, setBookingTime] = useState("15:00");
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  useEffect(() => {
+    if (tutor && tutor.subjects?.length > 0 && !bookingSubject) {
+      setBookingSubject(tutor.subjects[0]);
+    }
+  }, [tutor]);
+
+  const handleBookSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      toast.error("You must be logged in to book a session.");
+      return;
+    }
+    if (user.role !== "parent") {
+      toast.error("Only parents can request sessions.");
+      return;
+    }
+    if (!bookingSubject) {
+      toast.error("Please select a subject.");
+      return;
+    }
+    if (!bookingDate) {
+      toast.error("Please select a date.");
+      return;
+    }
+    if (!bookingTime) {
+      toast.error("Please select a time.");
+      return;
+    }
+
+    setBookingLoading(true);
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from("bookings")
+          .insert({
+            parent_id: user.id,
+            tutor_id: tutor.id,
+            subject: bookingSubject,
+            booking_date: bookingDate,
+            booking_time: bookingTime,
+            status: "Pending",
+          });
+
+        if (error) throw error;
+        toast.success("Session request submitted successfully!");
+        setIsBookingOpen(false);
+      } else {
+        toast.success("Demo: Session request submitted successfully!");
+        setIsBookingOpen(false);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit request.");
+    } finally {
+      setBookingLoading(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -104,7 +174,7 @@ function TutorDetail() {
             </div>
             <div className="md:text-right flex flex-col items-stretch md:items-end gap-2.5">
               <div className="text-3xl font-bold">${tutor.hourlyRate}<span className="text-base text-muted-foreground font-normal">/hr</span></div>
-              <Button size="lg" className="w-full md:w-auto" onClick={() => toast.success("Session request sent!")}><Calendar className="w-4 h-4 mr-2" />Book session</Button>
+              <Button size="lg" className="w-full md:w-auto" onClick={() => setIsBookingOpen(true)}><Calendar className="w-4 h-4 mr-2" />Book session</Button>
               <Link to="/messages" search={{ tutorId: tutor.id }} className="w-full md:w-auto">
                 <Button size="lg" variant="outline" className="w-full">
                   <MessageSquare className="w-4 h-4 mr-2" /> Message tutor
@@ -142,6 +212,76 @@ function TutorDetail() {
           ))}
         </CardContent>
       </Card>
+
+      {/* Booking Dialog Modal */}
+      {isBookingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+          <Card className="w-full max-w-md shadow-glow relative border-border/80 bg-card/90 backdrop-blur animate-in slide-in-from-bottom-4 duration-300">
+            <CardHeader>
+              <CardTitle className="text-xl">Request Tutoring Session</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Submit a schedule request for {tutor.name}. The tutor will review and approve it.</p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleBookSession} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Subject</label>
+                  <select
+                    value={bookingSubject}
+                    onChange={(e) => setBookingSubject(e.target.value)}
+                    className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+                  >
+                    {tutor.subjects.map((sub: string) => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date</label>
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split("T")[0]}
+                      value={bookingDate}
+                      onChange={(e) => setBookingDate(e.target.value)}
+                      className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Time</label>
+                    <input
+                      type="time"
+                      value={bookingTime}
+                      onChange={(e) => setBookingTime(e.target.value)}
+                      className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsBookingOpen(false)}
+                    disabled={bookingLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="shadow-emerald"
+                    disabled={bookingLoading}
+                  >
+                    {bookingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Request"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

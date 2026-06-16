@@ -4,8 +4,9 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { toast } from "sonner";
 
 const parentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -32,6 +33,78 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const nav = user?.role === "tutor" ? tutorNav : parentNav;
+
+  const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
+
+  // Global realtime message notifications
+  useEffect(() => {
+    if (!user || !isSupabaseConfigured) return;
+
+    const channel = supabase
+      .channel(`global-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `recipient_id=eq.${user.id}`
+        },
+        async (payload) => {
+          const newMsg = payload.new;
+          
+          // Check if current user has the sender active and is on the messages page
+          const isAtMessagesPage = window.location.pathname === "/messages";
+          const isActiveChat = isAtMessagesPage && (window as any).__activeContactId === newMsg.sender_id;
+
+          if (isActiveChat) {
+            return;
+          }
+
+          // Fetch sender details
+          const { data: senderProfile } = await supabase
+            .from("profiles")
+            .select("name")
+            .eq("id", newMsg.sender_id)
+            .maybeSingle();
+
+          const senderName = senderProfile?.name || "Someone";
+
+          // Show toast alert
+          toast(`New message from ${senderName}`, {
+            description: newMsg.text.length > 65 ? newMsg.text.substring(0, 65) + "..." : newMsg.text,
+            action: {
+              label: "Reply",
+              onClick: () => {
+                navigate({ to: "/messages", search: { tutorId: newMsg.sender_id } });
+              }
+            }
+          });
+
+          // Add to unread senders list
+          setUnreadSenders((prev) => Array.from(new Set([...prev, newMsg.sender_id])));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, navigate]);
+
+  // Listen for custom mark-read event
+  useEffect(() => {
+    const handleChatRead = (e: Event) => {
+      const contactId = (e as CustomEvent).detail?.contactId;
+      if (contactId) {
+        setUnreadSenders((prev) => prev.filter((id) => id !== contactId));
+      }
+    };
+    window.addEventListener("chat-read", handleChatRead);
+    return () => {
+      window.removeEventListener("chat-read", handleChatRead);
+    };
+  }, []);
 
   // Background geotracking for active tutors
   useEffect(() => {
@@ -93,6 +166,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {active && <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r bg-gold" />}
                 <Icon className={`w-4 h-4 transition-transform ${active ? "" : "group-hover:scale-110"}`} />
                 {item.label}
+                {item.label === "Messages" && unreadSenders.length > 0 && (
+                  <span className="ml-auto w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                )}
               </Link>
             );
           })}
@@ -141,8 +217,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               const active = pathname === item.to;
               return (
                 <Link key={item.to} to={item.to}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>
+                  className={`relative px-3 py-1.5 rounded-md text-xs font-medium ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>
                   {item.label}
+                  {item.label === "Messages" && unreadSenders.length > 0 && (
+                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                  )}
                 </Link>
               );
             })}
