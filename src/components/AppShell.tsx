@@ -212,23 +212,37 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Button>
           </div>
         </div>
-        <div className="md:hidden border-b border-border bg-card overflow-x-auto">
-          <div className="flex gap-1 p-2 min-w-max">
+        {/* Mobile bottom fixed nav — icons + labels */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border">
+          <div className="flex items-stretch overflow-x-auto scrollbar-none">
             {nav.map((item) => {
-              const active = pathname === item.to;
+              const Icon = item.icon;
+              const active = pathname === item.to || (item.to !== "/dashboard" && pathname.startsWith(item.to));
               return (
-                <Link key={item.to} to={item.to}
-                  className={`relative px-3 py-1.5 rounded-md text-xs font-medium ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>
-                  {item.label}
-                  {item.label === "Messages" && unreadSenders.length > 0 && (
-                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" />
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 min-w-[60px] py-2 px-1 text-[10px] font-medium transition-colors ${
+                    active ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b bg-primary" />
                   )}
+                  <div className={`relative w-6 h-6 flex items-center justify-center rounded-lg transition-all ${active ? "bg-primary/10" : ""}`}>
+                    <Icon className="w-4 h-4" />
+                    {item.label === "Messages" && unreadSenders.length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                    )}
+                  </div>
+                  <span className="leading-none truncate max-w-[56px] text-center">{item.label}</span>
                 </Link>
               );
             })}
           </div>
         </div>
-        <div className="p-4 md:p-8 max-w-6xl mx-auto">{children}</div>
+        <div className="p-4 md:p-8 max-w-6xl mx-auto pb-20 md:pb-8">{children}</div>
+
       </main>
     </div>
   );
