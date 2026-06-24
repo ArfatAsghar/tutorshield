@@ -9,6 +9,7 @@ import { Reveal } from "@/components/Reveal";
 import { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
+import { InteractiveMap } from "@/components/InteractiveMap";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — TutorShield" }] }),
@@ -328,26 +329,13 @@ function ParentDash() {
           </div>
           <CardContent className="pt-6">
             <div className="grid md:grid-cols-3 gap-6 items-center">
-              {/* Google Map Check-in Embed */}
+              {/* Interactive Leaflet Tracking Map */}
               <div className="md:col-span-2 relative h-64 rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
-                {tutorLocation ? (
-                  <iframe
-                    title="Live Google Map Transit Route"
-                    src={`https://maps.google.com/maps?saddr=${tutorLocation.lat},${tutorLocation.lng}&daddr=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                    className="w-full h-full border-0 rounded-xl"
-                    allowFullScreen
-                    loading="lazy"
-                  />
-                ) : (
-                  <iframe
-                    title="Home Google Map Location"
-                    src={`https://maps.google.com/maps?q=${homeCoords.lat},${homeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                    className="w-full h-full border-0 rounded-xl"
-                    allowFullScreen
-                    loading="lazy"
-                  />
-                )}
-                <div className="absolute bottom-2 left-2 text-[10px] bg-card/85 border border-border text-muted-foreground px-2 py-1 rounded backdrop-blur font-mono shadow-md">
+                <InteractiveMap
+                  homeCoords={homeCoords}
+                  tutorCoords={tutorLocation}
+                />
+                <div className="absolute bottom-2 left-2 z-[400] text-[10px] bg-card/85 border border-border text-muted-foreground px-2 py-1 rounded backdrop-blur font-mono shadow-md">
                   {tutorLocation 
                     ? `Tutor GPS: ${tutorLocation.lat.toFixed(4)}, ${tutorLocation.lng.toFixed(4)}`
                     : `Home GPS: ${homeCoords.lat.toFixed(4)}, ${homeCoords.lng.toFixed(4)}`

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, LogIn, LogOut, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { InteractiveMap } from "@/components/InteractiveMap";
 
 export const Route = createFileRoute("/attendance")({
   head: () => ({ meta: [{ title: "Attendance — TutorShield" }] }),
@@ -75,6 +76,48 @@ function Attendance() {
     fetchParentHome();
     loadHistory();
   }, [user]);
+
+  // Watch position and stream coordinates to database while checked in
+  useEffect(() => {
+    if (!checkedIn || !user || user.role !== "tutor" || !isSupabaseConfigured) return;
+
+    let watchId: number;
+
+    const updateLocation = async (lat: number, lng: number) => {
+      try {
+        await supabase
+          .from("tutor_locations")
+          .upsert({
+            tutor_id: user.id,
+            latitude: lat,
+            longitude: lng,
+            updated_at: new Date().toISOString(),
+          });
+      } catch (err) {
+        console.error("Failed to update live tracking location:", err);
+      }
+    };
+
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          updateLocation(pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.error("Watch position error:", err);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    return () => {
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      // Clean up coordinate row on unmount
+      supabase.from("tutor_locations").delete().eq("tutor_id", user.id).then();
+    };
+  }, [checkedIn, user]);
 
   const loadHistory = async () => {
     setLoading(true);
@@ -256,7 +299,7 @@ function Attendance() {
   };
 
   const checkOut = async () => {
-    if (isSupabaseConfigured && activeRecordId) {
+    if (isSupabaseConfigured && activeRecordId && user) {
       try {
         const { error } = await supabase
           .from("attendance")
@@ -264,6 +307,13 @@ function Attendance() {
           .eq("id", activeRecordId);
 
         if (error) throw error;
+
+        // Clean up tutor live location on checkout
+        await supabase
+          .from("tutor_locations")
+          .delete()
+          .eq("tutor_id", user.id);
+
         setCheckedIn(false);
         setActiveRecordId(null);
         setStudentName("");
@@ -410,23 +460,10 @@ function Attendance() {
             {selectedRecord && selectedRecord.lat && selectedRecord.lng ? (
               <div className="space-y-4">
                 <div className="relative h-64 rounded-xl overflow-hidden border border-border bg-muted">
-                  {user?.role === "parent" && parentHomeCoords ? (
-                    <iframe
-                      title="Attendance Map Router"
-                      src={`https://maps.google.com/maps?saddr=${selectedRecord.lat},${selectedRecord.lng}&daddr=${parentHomeCoords.lat},${parentHomeCoords.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                      className="w-full h-full border-0"
-                      allowFullScreen
-                      loading="lazy"
-                    />
-                  ) : (
-                    <iframe
-                      title="Attendance Map Detail"
-                      src={`https://maps.google.com/maps?q=${selectedRecord.lat},${selectedRecord.lng}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                      className="w-full h-full border-0"
-                      allowFullScreen
-                      loading="lazy"
-                    />
-                  )}
+                  <InteractiveMap
+                    homeCoords={user?.role === "parent" && parentHomeCoords ? parentHomeCoords : { lat: selectedRecord.lat, lng: selectedRecord.lng }}
+                    tutorCoords={user?.role === "parent" && parentHomeCoords ? { lat: selectedRecord.lat, lng: selectedRecord.lng } : null}
+                  />
                 </div>
                 <div className="text-sm space-y-2 bg-muted/30 p-3 rounded-lg border border-border/55">
                   <div className="flex justify-between border-b border-border/40 pb-1.5">
