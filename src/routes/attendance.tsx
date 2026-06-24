@@ -16,6 +16,19 @@ export const Route = createFileRoute("/attendance")({
   component: () => <RequireAuth><Attendance /></RequireAuth>,
 });
 
+// Haversine formula to compute distance in Kilometers between two coordinates
+function getDistanceKM(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 function Attendance() {
   const { user } = useAuth();
   const [checkedIn, setCheckedIn] = useState(false);
@@ -27,6 +40,10 @@ function Attendance() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [parentHomeCoords, setParentHomeCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Geofencing states
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [selectedBookingId, setSelectedBookingId] = useState<string>("");
 
   useEffect(() => {
     // Try to get current geolocation
@@ -63,6 +80,33 @@ function Attendance() {
     setLoading(true);
     if (isSupabaseConfigured && user) {
       try {
+        // Fetch tutor's accepted bookings to link check-ins and run Geofencing checks
+        if (user.role === "tutor") {
+          const { data: bookingsData } = await supabase
+            .from("bookings")
+            .select(`
+              id,
+              subject,
+              parent_id,
+              profiles!bookings_parent_id_fkey (
+                name,
+                home_latitude,
+                home_longitude,
+                home_address
+              )
+            `)
+            .eq("tutor_id", user.id)
+            .eq("status", "Accepted");
+
+          const bList = bookingsData || [];
+          setBookings(bList);
+          if (bList.length > 0) {
+            setSelectedBookingId(bList[0].id);
+            const prof = Array.isArray(bList[0].profiles) ? bList[0].profiles[0] : bList[0].profiles;
+            setStudentName(prof?.name || "Student");
+          }
+        }
+
         let query = supabase
           .from("attendance")
           .select(`
@@ -136,18 +180,58 @@ function Attendance() {
   };
 
   const checkIn = async () => {
-    if (!studentName.trim()) {
-      toast.error("Please enter the student's name");
+    let finalStudentName = studentName.trim();
+    let finalBookingId = null;
+
+    // Run Geofencing Verification if tutor has bookings loaded
+    if (bookings.length > 0) {
+      const activeBooking = bookings.find((b) => b.id === selectedBookingId);
+      if (activeBooking) {
+        finalBookingId = activeBooking.id;
+        const prof = Array.isArray(activeBooking.profiles) ? activeBooking.profiles[0] : activeBooking.profiles;
+        finalStudentName = prof?.name || finalStudentName;
+
+        if (prof?.home_latitude && prof?.home_longitude) {
+          const pLat = Number(prof.home_latitude);
+          const pLng = Number(prof.home_longitude);
+
+          if (!coords) {
+            toast.error("Unable to check in: Geolocation/GPS permissions are required to confirm your location.");
+            return;
+          }
+
+          // Compute distance
+          const distance = getDistanceKM(coords.lat, coords.lng, pLat, pLng);
+
+          // Block check-in if tutor is further than 200 meters (0.20 km)
+          if (distance > 0.2) {
+            toast.error(
+              `Geofencing Verification Failed: You are currently ${distance.toFixed(2)} km away from the student's home. You must be within 200 meters (0.20 km) of their location to check in.`,
+              { duration: 6000 }
+            );
+            return;
+          }
+
+          toast.success("Geofence verified! You are at the student's home location.");
+        } else {
+          toast.warning("The parent has not registered their home address coordinates yet. Geofencing check was bypassed.");
+        }
+      }
+    }
+
+    if (!finalStudentName) {
+      toast.error("Please enter or select a student name");
       return;
     }
-    const sName = studentName.trim();
+
     if (isSupabaseConfigured && user) {
       try {
         const { data, error } = await supabase
           .from("attendance")
           .insert({
             tutor_id: user.id,
-            student_name: sName,
+            booking_id: finalBookingId,
+            student_name: finalStudentName,
             check_in_lat: coords?.lat,
             check_in_lng: coords?.lng,
             status: "In Progress",
@@ -159,7 +243,7 @@ function Attendance() {
         setActiveRecordId(data.id);
         setCheckedIn(true);
         setCheckInTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-        toast.success(`Geo check-in recorded for ${sName}`);
+        toast.success(`Geo check-in recorded for ${finalStudentName}`);
         loadHistory();
       } catch (err: any) {
         toast.error(err.message || "Check-in failed");
@@ -167,7 +251,7 @@ function Attendance() {
     } else {
       setCheckedIn(true);
       setCheckInTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-      toast.success(`Geo check-in recorded for ${sName}`);
+      toast.success(`Geo check-in recorded for ${finalStudentName}`);
     }
   };
 
@@ -227,16 +311,48 @@ function Attendance() {
           <CardContent className="pt-6">
             {!checkedIn ? (
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="student-name" className="text-muted-foreground">Student Name</Label>
-                  <Input
-                    id="student-name"
-                    placeholder="Enter student's name (e.g. Zain)"
-                    value={studentName}
-                    onChange={(e) => setStudentName(e.target.value)}
-                  />
-                </div>
-                <Button size="lg" className="w-full font-semibold" onClick={checkIn} disabled={!studentName.trim()}><LogIn className="w-4 h-4 mr-2" />Geo check-in</Button>
+                {bookings.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="booking-select" className="text-muted-foreground">Select Active Booking</Label>
+                    <select
+                      id="booking-select"
+                      value={selectedBookingId}
+                      onChange={(e) => {
+                        const bId = e.target.value;
+                        setSelectedBookingId(bId);
+                        const b = bookings.find((x) => x.id === bId);
+                        const prof = Array.isArray(b?.profiles) ? b.profiles[0] : b?.profiles;
+                        setStudentName(prof?.name || "Student");
+                      }}
+                      className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary"
+                    >
+                      {bookings.map((b) => {
+                        const prof = Array.isArray(b.profiles) ? b.profiles[0] : b.profiles;
+                        return (
+                          <option key={b.id} value={b.id}>
+                            {prof?.name || "Student"} — {b.subject}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="student-name" className="text-muted-foreground">Student Name (Manual Demo Entry)</Label>
+                    <Input
+                      id="student-name"
+                      placeholder="Enter student's name (e.g. Zain)"
+                      value={studentName}
+                      onChange={(e) => setStudentName(e.target.value)}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">No accepted bookings found. Geofencing check is bypassed in demo mode.</p>
+                  </div>
+                )}
+                
+                <Button size="lg" className="w-full font-semibold" onClick={checkIn} disabled={bookings.length === 0 && !studentName.trim()}>
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Geo check-in
+                </Button>
               </div>
             ) : (
               <Button size="lg" variant="destructive" className="w-full font-semibold animate-pulse" onClick={checkOut}><LogOut className="w-4 h-4 mr-2" />Check out & end session</Button>

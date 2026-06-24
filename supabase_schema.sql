@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tutor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     student_name TEXT NOT NULL,
+    booking_id UUID,
     check_in_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     check_out_time TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     check_in_lat NUMERIC,
@@ -61,6 +62,9 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     status TEXT DEFAULT 'In Progress',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Ensure booking_id exists if table was already created
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS booking_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL;
 
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 
